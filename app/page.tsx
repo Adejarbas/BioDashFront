@@ -5,11 +5,11 @@ import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 
 export const getApiBaseClient = (): string => {  
-  return process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3000";
+  return process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3003";
 };
 
 export const getApiBaseServer = (): string => {
-  return process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3000";
+  return process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3003";
 };
 
 export default function Home() {

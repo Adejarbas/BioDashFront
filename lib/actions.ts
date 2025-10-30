@@ -5,8 +5,8 @@ import { createServerActionClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 
-// Base URL do backend (usa variável de ambiente; fallback para localhost:3000)
-const API_BASE = process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3000"
+// Base URL do backend (usa variável de ambiente; fallback para localhost:3003)
+const API_BASE = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3003"
 
 // ...existing code...
 export async function signIn(prevState: any, formData: FormData) {
@@ -80,7 +80,7 @@ export async function signUp(prevState: any, formData: FormData) {
       options: {
         emailRedirectTo:
           process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ||
-          `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/dashboard`,
+          `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3001"}/dashboard`,
         data: {
           email_confirm: true,
         },

@@ -14,7 +14,7 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*', // Captura todas as rotas que começam com /api/
-        destination: 'http://localhost:3000/api/:path*', // Envia para o seu back-end
+        destination: 'http://localhost:3003/api/:path*', // Envia para o seu back-end
       },
     ]
   },
