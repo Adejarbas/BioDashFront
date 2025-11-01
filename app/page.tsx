@@ -2,8 +2,15 @@
 "use client";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-
 import { useState, useEffect } from "react";
+
+export const getApiBaseClient = (): string => {  
+  return process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3003";
+};
+
+export const getApiBaseServer = (): string => {
+  return process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3003";
+};
 
 export default function Home() {
   // Estado para dados do usuário autenticado
@@ -26,8 +33,10 @@ const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
   // Buscar dados do usuário autenticado ao carregar a página
   useEffect(() => {
     setUserLoading(true);
-    fetch("/api/user")
+    // fetch relativo para usar o rewrite do Next (evita CORS)
+    fetch(`/api/user`, { method: "GET", credentials: "include" })
       .then(async (res) => {
+        if (!res.ok) throw new Error(await res.text().catch(() => res.statusText));
         const data = await res.json();
         if (data.success) {
           setUserData(data.user);
@@ -48,26 +57,36 @@ const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
   }, []);
 
   const handleCheckoutPlano = async (valor: number) => {
-    setLoadingPlan((prev) => ({ ...prev, [valor]: true }));
-    setErrorPlan((prev) => ({ ...prev, [valor]: "" }));
-    try {
-      const res = await fetch("/api/stripe/checkout-session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: valor })
-      });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        setErrorPlan((prev) => ({ ...prev, [valor]: data.error || "Erro ao criar checkout" }));
-      }
-    } catch (err) {
-      setErrorPlan((prev) => ({ ...prev, [valor]: "Erro de conexão com o servidor" }));
-    } finally {
-      setLoadingPlan((prev) => ({ ...prev, [valor]: false }));
+  setLoadingPlan((prev) => ({ ...prev, [valor]: true }));
+  setErrorPlan((prev) => ({ ...prev, [valor]: "" }));
+
+  try {
+    // usar rota relativa para aproveitar o rewrite do Next e evitar CORS
+    const res = await fetch(`/api/stripe/checkout-session`, {
+      method: "POST",
+      credentials: "include", // importante se backend usa sessão/cookies
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amount: valor }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => res.statusText);
+      setErrorPlan((prev) => ({ ...prev, [valor]: `Erro ${res.status}: ${text}` }));
+      return;
     }
-  };
+
+    const data = await res.json();
+    if (data.url) {
+      window.location.href = data.url;
+    } else {
+      setErrorPlan((prev) => ({ ...prev, [valor]: data.error || "Erro ao criar checkout" }));
+    }
+  } catch (err) {
+    setErrorPlan((prev) => ({ ...prev, [valor]: "Erro de conexão com o servidor" }));
+  } finally {
+    setLoadingPlan((prev) => ({ ...prev, [valor]: false }));
+  }
+};
 
   return (
     <div className="flex flex-col min-h-screen">
