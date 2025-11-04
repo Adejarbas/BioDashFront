@@ -54,3 +54,4 @@ Arquivos úteis
 Se quiser, eu também posso adicionar um comando `pnpm start` containerizado ou um small script para verificar saúde do backend automaticamente.
 # projeto-biogen-v2-react
 .
+# Faculdade
