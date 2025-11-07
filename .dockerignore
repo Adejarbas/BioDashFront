@@ -1,0 +1,12 @@
+# Dependências locais
+node_modules
+
+# Arquivos de build (o Dockerfile cuida disso)
+.next
+
+# Arquivos do Git
+.git
+.gitignore
+
+# Variáveis de ambiente locais
+.env.local
