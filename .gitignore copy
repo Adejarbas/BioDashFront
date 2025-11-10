@@ -1,0 +1,8 @@
+.env.local
+.node_modules
+ENV_VARS.md
+.env
+
+#teste
+.vercel
+node_modules
