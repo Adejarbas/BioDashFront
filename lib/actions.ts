@@ -74,7 +74,7 @@ export async function signUp(prevState: any, formData: FormData) {
       password: password.toString(),
       options: {
         emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || 
-          `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3003"}/dashboard`,
+          `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/dashboard`,
         data: {
           full_name: fullName?.toString(),
           company_name: companyName?.toString(),
