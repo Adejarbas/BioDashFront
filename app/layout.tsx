@@ -6,9 +6,9 @@ import "./globals.css"
 import SupportModal from "@/components/support-modal"
 
 export const metadata: Metadata = {
-  title: "v0 App",
-  description: "Created with v0",
-  generator: "v0.dev",
+  title: "BioDash by Biogen",
+  description: "Gestor Operacional de Biodigestores",
+  generator: "Biogen",
 }
 
 export default function RootLayout({
