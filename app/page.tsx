@@ -1,54 +1,111 @@
-
 "use client";
+
+// --- Imports do React e Next ---
 import Link from "next/link";
+import Image from "next/image"; // Importado para o logo
+import { useState, useEffect, useMemo } from "react";
+
+// --- Imports de Componentes UI ---
 import { Button } from "@/components/ui/button";
-import { useState, useEffect } from "react";
 
-export const getApiBaseClient = (): string => {  
-  return process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3003";
+// --- Imports de Ícones ---
+import { Recycle, LightningCharge, GraphUpArrow } from 'react-bootstrap-icons';
+
+// --- Tipos ---
+type User = {
+  id: string;
+  email: string;
+  name?: string;
+  full_name?: string;
+  company_name?: string;
+  razao_social?: string;
+  address?: string;
 };
 
-export const getApiBaseServer = (): string => {
-  return process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3003";
-};
-
-export default function Home() {
-  // Estado para dados do usuário autenticado
-  const [userData, setUserData] = useState<any>(null);
-  const [userLoading, setUserLoading] = useState(false);
-  const [userError, setUserError] = useState("");
-  // Estados para cada plano
-  const [loadingPlan, setLoadingPlan] = useState<{[key:number]: boolean}>({});
-  const [errorPlan, setErrorPlan] = useState<{[key:number]: string}>({});
-
-  // Estado para avaliações dinâmicas
-  type Avaliacao = {
+type Avaliacao = {
   titulo: string;
   descricao: string;
   estrelas: number;
   usuario: string;
   foto?: string | null;
 };
-const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
-  // Buscar dados do usuário autenticado ao carregar a página
+
+type Plano = {
+  id: string; // ID único (ex: 'essencial')
+  valor: number; // Valor para o Stripe (em centavos)
+  nome: string;
+  preco: string; // Valor formatado (ex: 'R$5/mês')
+};
+
+// --- Constantes ---
+const PLANOS: Plano[] = [
+  { id: 'essencial', valor: 500, nome: 'Plano Essencial', preco: 'R$5/mês' },
+  { id: 'pro', valor: 1000, nome: 'Plano Profissional', preco: 'R$10/mês' },
+  { id: 'premium', valor: 1500, nome: 'Plano Premium', preco: 'R$15/mês' },
+];
+
+export default function Home() {
+  // --- Estados ---
+  const [userData, setUserData] = useState<User | null>(null);
+  const [userLoading, setUserLoading] = useState(false);
+  const [userError, setUserError] = useState("");
+
+  const [loadingPlan, setLoadingPlan] = useState<{[key: string]: boolean}>({});
+  const [errorPlan, setErrorPlan] = useState<{[key: string]: string}>({});
+
+  const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
+
+  // --- Lógica de Autenticação ---
+  const isAuthenticated = useMemo(() => {
+    if (!userData || !userData.email) return false;
+    // Lógica para desconsiderar usuários de teste ou vazios
+    if (userData.email === "test@example.com" || userData.email === "") {
+      return false;
+    }
+    return true;
+  }, [userData]);
+
+  // --- Effects ---
+  
+  // Buscar dados do usuário autenticado
+  // Buscar dados do usuário autenticado
   useEffect(() => {
     setUserLoading(true);
-    // fetch relativo para usar o rewrite do Next (evita CORS)
-    fetch(`/api/user`, { method: "GET", credentials: "include" })
+    fetch("/api/user")
       .then(async (res) => {
-        if (!res.ok) throw new Error(await res.text().catch(() => res.statusText));
         const data = await res.json();
-        if (data.success) {
+
+        if (res.ok && data.success) {
+          // 1. SUCESSO: Usuário está logado
           setUserData(data.user);
-        } else {
-          setUserError(data.message || "Erro ao buscar dados do usuário");
+          setUserError(""); 
+        } 
+        else {
+          // 2. FALHA (qualquer tipo): Pode ser 401, 500, ou 200 com success:false
+          const errorMessage = data.message || "Erro desconhecido ao buscar usuário";
+
+          // 3. VERIFICAR se a falha é um "Não logado" esperado
+          //    Verificamos o status 401 OU a mensagem "unauthorized"
+          if (res.status === 401 || errorMessage.toLowerCase().includes('unauthorized')) {
+            // É um "não logado" esperado. NÃO mostrar erro.
+            setUserError("");
+          } 
+          else {
+            // É um erro REAL (ex: 500, "database connection failed", etc)
+            // SÓ AGORA definimos o erro
+            setUserError(errorMessage);
+          }
         }
       })
-      .catch(() => setUserError("Erro de conexão ao buscar usuário"))
+      .catch((err) => {
+        // 4. ERRO DE REDE
+        console.error("Erro de conexão ao buscar usuário:", err);
+        setUserError("Erro de conexão ao buscar usuário");
+      })
       .finally(() => setUserLoading(false));
   }, []);
 
-  // Carregar avaliações do localStorage ao abrir a página
+  // Carregar avaliações do localStorage
   useEffect(() => {
     const stored = localStorage.getItem("avaliacoes");
     if (stored) {
@@ -56,56 +113,59 @@ const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
     }
   }, []);
 
-  const handleCheckoutPlano = async (valor: number) => {
-  setLoadingPlan((prev) => ({ ...prev, [valor]: true }));
-  setErrorPlan((prev) => ({ ...prev, [valor]: "" }));
-
-  try {
-    // usar rota relativa para aproveitar o rewrite do Next e evitar CORS
-    const res = await fetch(`/api/stripe/checkout-session`, {
-      method: "POST",
-      credentials: "include", // importante se backend usa sessão/cookies
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount: valor }),
-    });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => res.statusText);
-      setErrorPlan((prev) => ({ ...prev, [valor]: `Erro ${res.status}: ${text}` }));
-      return;
+  // --- Handlers ---
+  const handleCheckoutPlano = async (plano: Plano) => {
+    setLoadingPlan((prev) => ({ ...prev, [plano.id]: true }));
+    setErrorPlan((prev) => ({ ...prev, [plano.id]: "" }));
+    try {
+      const res = await fetch("/api/stripe/checkout-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: plano.valor, planId: plano.id })
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        setErrorPlan((prev) => ({ ...prev, [plano.id]: data.error || "Erro ao criar checkout" }));
+      }
+    } catch (err) {
+      setErrorPlan((prev) => ({ ...prev, [plano.id]: "Erro de conexão com o servidor" }));
+    } finally {
+      setLoadingPlan((prev) => ({ ...prev, [plano.id]: false }));
     }
+  };
 
-    const data = await res.json();
-    if (data.url) {
-      window.location.href = data.url;
-    } else {
-      setErrorPlan((prev) => ({ ...prev, [valor]: data.error || "Erro ao criar checkout" }));
-    }
-  } catch (err) {
-    setErrorPlan((prev) => ({ ...prev, [valor]: "Erro de conexão com o servidor" }));
-  } finally {
-    setLoadingPlan((prev) => ({ ...prev, [valor]: false }));
-  }
-};
-
+  // --- Renderização ---
   return (
-    <div className="flex flex-col min-h-screen">
-      <header className="px-6 py-4 border-b">
+    <div className="flex flex-col min-h-screen bg-gray-50">
+      
+      {/* === HEADER (CABEÇALHO) === */}
+      <header className="sticky top-0 z-50 px-6 py-4 border-b bg-white/90 backdrop-blur-sm">
         <div className="container flex items-center justify-between">
-          <h1 className="text-2xl font-bold">BioDash</h1>
+          
+          {/* Logo com link para a home */}
+          <Link href="/">
+            <Image
+              src="/logo-biogen.png" 
+              alt="Logo BioGen"
+              width={140} // Ajuste a LARGURA conforme necessário
+              height={40} // Ajuste a ALTURA conforme necessário
+              priority 
+            />
+          </Link>
+
           <nav className="flex items-center gap-4">
-            {/* Se não estiver logado, mostra Login e Register */}
-            {!(userData && userData.email && userData.email !== "test@example.com" && userData.email !== "") ? (
+            {!isAuthenticated ? (
               <>
                 <Link href="/login">
-                  <Button variant="outline">Login</Button>
+                  <Button variant="outline">Entrar</Button>
                 </Link>
                 <Link href="/register">
-                  <Button>Register</Button>
+                  <Button>Registrar</Button>
                 </Link>
               </>
             ) : (
-              // Se logado, mostra apenas Meu Perfil
               <Link href="/dashboard">
                 <Button>Meu Perfil</Button>
               </Link>
@@ -113,10 +173,21 @@ const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
           </nav>
         </div>
       </header>
+      
+      {/* === MAIN (CONTEÚDO) === */}
       <main className="flex-1">
-        {/* Exibe mensagem de boas-vindas e dados apenas se logado */}
-        {/* Só renderiza o bloco se estiver logado */}
-        {userData && userData.email && userData.email !== "test@example.com" && userData.email !== "" ? (
+        
+        {/* Exibir erro de usuário (apenas erros reais) */}
+        {userError && (
+          <section className="container my-6">
+            <div className="bg-red-100 border border-red-300 text-red-800 rounded p-4 text-center">
+              {userError}
+            </div>
+          </section>
+        )}
+
+        {/* Exibe mensagem de boas-vindas se logado */}
+        {isAuthenticated ? (
           <section className="container my-6">
             <div className="bg-green-50 border border-green-200 rounded p-4 mb-4">
               <div className="text-green-800 text-lg font-semibold mb-2">Seja bem-vindo, {userData.name || userData.full_name || userData.email}!</div>
@@ -128,37 +199,49 @@ const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
             </div>
           </section>
         ) : null}
-        <section className="py-12 md:py-24 lg:py-32">
-          <div className="container px-4 md:px-6">
+
+        {/* === HERO BANNER === */}
+        {/* TODO: Substitua a URL da imagem de fundo abaixo */}
+        <section 
+          id="home" 
+          className="relative py-32 md:py-48 text-white bg-cover bg-center bg-[url('../public/bidigester-bg.jpg')]">
+          {/* Overlay escuro */}
+          <div className="absolute inset-0 bg-black/60" />
+          
+          <div className="relative z-10 container px-4 md:px-6">
             <div className="flex flex-col items-center justify-center space-y-4 text-center">
               <div className="space-y-2">
                 <h1 className="text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl lg:text-6xl">
-                  Biodigester Management System
+                  Sistema de Gestão de Biodigestores
                 </h1>
-                <p className="mx-auto max-w-[700px] text-gray-500 md:text-xl">
-                  Monitor and optimize your biodigester performance with our comprehensive dashboard.
+                <p className="mx-auto max-w-[700px] text-gray-200 md:text-xl">
+                  Monitore e otimize o desempenho do seu biodigestor com nosso dashboard completo e intuitivo.
                 </p>
               </div>
               <div className="space-x-4">
-                <Link href="#plans">
+                <Link href="#planos">
                   <Button size="lg">Ver Planos</Button>
                 </Link>
-                <Link href="#features">
-                  <Button variant="outline" size="lg">
-                    Learn More
+                <Link href="#funcionalidades">
+                  <Button variant="outline" size="lg" className="text-black border-white hover:bg-black hover:text-white">
+                    Saiba Mais
                   </Button>
                 </Link>
               </div>
             </div>
           </div>
         </section>
-        {/* Seção de planos */}
-        <section id="plans" className="py-12 md:py-24 lg:py-32 bg-white">
+
+        {/* === SEÇÃO DE PLANOS === */}
+        <section id="planos" className="py-12 md:py-24 lg:py-32 bg-white">
           <div className="container px-4 md:px-6">
             <h2 className="text-3xl font-bold text-center mb-8">Escolha seu plano de assinatura</h2>
             <div className="grid gap-8 md:grid-cols-3">
-              {[{valor: 500, nome: 'Plano Essencial', preco: 'R$5/mês'}, {valor: 1000, nome: 'Plano Profissional', preco: 'R$10/mês'}, {valor: 1500, nome: 'Plano Premium', preco: 'R$15/mês'}].map((plano, idx) => (
-                <div key={idx} className="border rounded-lg p-6 flex flex-col items-center">
+              {PLANOS.map((plano) => (
+                <div 
+                  key={plano.id} 
+                  className="border rounded-lg p-6 flex flex-col items-center shadow-lg transition-transform duration-300 hover:scale-105"
+                >
                   <h3 className="text-xl font-bold mb-2">{plano.nome}</h3>
                   <p className="text-2xl font-semibold mb-4">{plano.preco}</p>
                   <ul className="mb-6 text-gray-600 text-center">
@@ -166,19 +249,20 @@ const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
                     <li>Dashboard de indicadores</li>
                     <li>Suporte dedicado</li>
                   </ul>
-                  <Button size="lg" onClick={() => handleCheckoutPlano(plano.valor)} disabled={!!loadingPlan[plano.valor]}>
-                    {loadingPlan[plano.valor] ? "Redirecionando..." : `Assinar por ${plano.preco}`}
+                  <Button size="lg" onClick={() => handleCheckoutPlano(plano)} disabled={!!loadingPlan[plano.id]}>
+                    {loadingPlan[plano.id] ? "Redirecionando..." : `Assinar por ${plano.preco}`}
                   </Button>
-                  {errorPlan[plano.valor] && (
-                    <div className="text-red-500 text-sm mt-2">{errorPlan[plano.valor]}</div>
+                  {errorPlan[plano.id] && (
+                    <div className="text-red-500 text-sm mt-2">{errorPlan[plano.id]}</div>
                   )}
                 </div>
               ))}
             </div>
           </div>
         </section>
-        {/* Seção de avaliações dos usuários */}
-        <section id="avaliacoes" className="py-12 md:py-24 lg:py-32 bg-white">
+
+        {/* === SEÇÃO DE AVALIAÇÕES === */}
+        <section id="avaliacoes" className="py-12 md:py-24 lg:py-32 bg-gray-50">
           <div className="container px-4 md:px-6">
             <div className="max-w-7xl mx-auto p-12 bg-white rounded shadow-lg border-t-4 border-green-400">
               <h2 className="text-3xl font-bold mb-8 text-green-700 text-center">Avaliações dos Usuários</h2>
@@ -186,7 +270,6 @@ const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
                 {avaliacoes.length > 0 ? (
                   avaliacoes.map((av, idx) => (
                     <div key={idx} className="border border-gray-200 rounded-lg p-10 min-h-[320px] min-w-[220px] flex flex-col items-center justify-start bg-gray-50 shadow-md">
-                      {/* Espaço centralizado para foto do cliente (mock visual) */}
                       <div className="flex justify-center items-center w-24 h-24 rounded-full bg-green-100 border-2 border-green-300 mb-4">
                         {av.foto ? (
                           <img src={av.foto} alt={av.usuario} className="w-20 h-20 rounded-full object-cover" />
@@ -203,7 +286,7 @@ const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
                         ))}
                       </span>
                       <div className="font-bold mb-2 whitespace-nowrap">{av.titulo}</div>
-                      <div className="text-gray-700">{av.descricao}</div>
+                      <div className="text-gray-700 text-center">{av.descricao}</div>
                     </div>
                   ))
                 ) : (
@@ -213,101 +296,58 @@ const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
             </div>
           </div>
         </section>
-        <section id="features" className="py-12 md:py-24 lg:py-32 bg-gray-50">
+
+        {/* === SEÇÃO DE FUNCIONALIDADES (com ícones Bootstrap) === */}
+        <section id="funcionalidades" className="py-12 md:py-24 lg:py-32 bg-white">
           <div className="container px-4 md:px-6">
+            <h2 className="text-3xl font-bold text-center mb-12">Nossos Diferenciais</h2>
             <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-3">
+              
+              {/* 1. Rastreamento de Resíduos */}
               <div className="flex flex-col items-center space-y-2 text-center">
                 <div className="p-4 bg-green-100 rounded-full">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="h-6 w-6 text-green-600"
-                  >
-                    <path d="M2 22v-5l5-5 5 5-5 5z"></path>
-                    <path d="M9.5 14.5 16 8"></path>
-                    <path d="m17 2 5 5-5 5-5-5z"></path>
-                  </svg>
+                  <Recycle className="h-6 w-6 text-green-600" />
                 </div>
-                <h3 className="text-xl font-bold">Waste Processing Tracking</h3>
-                <p className="text-gray-500">Monitor the amount of waste processed by your biodigester in real-time.</p>
+                <h3 className="text-xl font-bold">Rastreamento de Resíduos</h3>
+                <p className="text-gray-500">Monitore a quantidade de resíduos processados pelo seu biodigestor em tempo real.</p>
               </div>
+
+              {/* 2. Geração de Energia */}
               <div className="flex flex-col items-center space-y-2 text-center">
                 <div className="p-4 bg-yellow-100 rounded-full">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="h-6 w-6 text-yellow-600"
-                  >
-                    <path d="M12 2v8"></path>
-                    <path d="m4.93 10.93 1.41 1.41"></path>
-                    <path d="M2 18h2"></path>
-                    <path d="M20 18h2"></path>
-                    <path d="m19.07 10.93-1.41 1.41"></path>
-                    <path d="M22 22H2"></path>
-                    <path d="m8 22 4-10 4 10"></path>
-                  </svg>
+                  <LightningCharge className="h-6 w-6 text-yellow-600" />
                 </div>
-                <h3 className="text-xl font-bold">Energy Generation</h3>
-                <p className="text-gray-500">
-                  Track the energy produced by your biodigester system with detailed analytics.
-                </p>
+                <h3 className="text-xl font-bold">Geração de Energia</h3>
+                <p className="text-gray-500">Acompanhe a energia produzida pelo seu sistema com análises detalhadas.</p>
               </div>
+
+              {/* 3. Benefícios Fiscais */}
               <div className="flex flex-col items-center space-y-2 text-center">
                 <div className="p-4 bg-blue-100 rounded-full">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="h-6 w-6 text-blue-600"
-                  >
-                    <path d="M2 9a3 3 0 0 1 0 6v2a5 5 0 0 0 0-10Z"></path>
-                    <path d="M22 9a3 3 0 0 0 0 6v2a5 5 0 0 1 0-10Z"></path>
-                    <path d="M6 7.5a3.5 3.5 0 0 1 0 9v2a5.5 5.5 0 0 0 0-13Z"></path>
-                    <path d="M18 7.5a3.5 3.5 0 0 0 0 9v2a5.5 5.5 0 0 1 0-13Z"></path>
-                    <path d="M12 6a6 6 0 0 0-6 6v6a6 6 0 0 0 12 0v-6a6 6 0 0 0-6-6Z"></path>
-                  </svg>
+                  <GraphUpArrow className="h-6 w-6 text-blue-600" />
                 </div>
-                <h3 className="text-xl font-bold">Tax Deduction Tracking</h3>
-                <p className="text-gray-500">
-                  Calculate and visualize tax benefits from your sustainable energy production.
-                </p>
+                <h3 className="text-xl font-bold">Benefícios Fiscais</h3>
+                <p className="text-gray-500">Calcule e visualize os benefícios fiscais da sua produção de energia sustentável.</p>
               </div>
+
             </div>
           </div>
         </section>
       </main>
-      <footer className="py-6 border-t">
+
+      {/* === FOOTER (RODAPÉ) === */}
+      <footer className="py-8 border-t bg-gray-100">
         <div className="container flex flex-col items-center justify-center gap-4 text-center md:flex-row md:gap-8">
-          <p className="text-sm text-gray-500">© 2024 BioDash. All rights reserved.</p>
+          <p className="text-sm text-gray-500">© 2024 BioDash. Todos os direitos reservados.</p>
           <nav className="flex gap-4 text-sm">
             <Link href="#" className="text-gray-500 hover:underline">
-              Terms
+              Termos
             </Link>
             <Link href="#" className="text-gray-500 hover:underline">
-              Privacy
+              Privacidade
             </Link>
             <Link href="#" className="text-gray-500 hover:underline">
-              Contact
+              Contato
             </Link>
           </nav>
         </div>
