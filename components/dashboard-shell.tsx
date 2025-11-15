@@ -11,7 +11,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
   return (
     <div className="flex min-h-screen flex-col bg-green-50">
       <header className="sticky top-0 z-10 flex h-16 items-center gap-4 bio-header px-6">
-        <a href="/dashboard" className="flex items-center gap-2 font-semibold">
+        <a href="" className="flex items-center gap-2 font-semibold">
           <Leaf className="h-6 w-6" />
           <span className="text-xl">BioDash</span>
         </a>
