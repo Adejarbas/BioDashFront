@@ -11,6 +11,11 @@ import { Button } from "@/components/ui/button";
 // --- Imports de Ícones ---
 import { Recycle, LightningCharge, GraphUpArrow } from 'react-bootstrap-icons';
 
+
+// teste para verificar conexão com o banco \/
+// console.log("TESTE SUPABASE URL =>", process.env.NEXT_PUBLIC_SUPABASE_URL)
+
+
 // --- Tipos ---
 type User = {
   id: string;
@@ -57,17 +62,17 @@ export default function Home() {
 
   // --- Lógica de Autenticação ---
   const isAuthenticated = useMemo(() => {
-    if (!userData || !userData.email) return false;
-    // Lógica para desconsiderar usuários de teste ou vazios
-    if (userData.email === "test@example.com" || userData.email === "") {
-      return false;
-    }
-    return true;
-  }, [userData]);
+  // Enquanto ainda está carregando, não considerar logado
+  if (userLoading) return false;
+
+  // Se não tem usuário retornado pela API, não está logado
+  if (!userData || !userData.email) return false;
+
+  return true;
+}, [userData, userLoading]);
 
   // --- Effects ---
   
-  // Buscar dados do usuário autenticado
   // Buscar dados do usuário autenticado
   useEffect(() => {
     setUserLoading(true);
@@ -98,9 +103,9 @@ export default function Home() {
         }
       })
       .catch((err) => {
-        // 4. ERRO DE REDE
-        console.error("Erro de conexão ao buscar usuário:", err);
-        setUserError("Erro de conexão ao buscar usuário");
+        // 4. ERRO DE REDE teste para verificar conexão com o banco \/
+        //console.error("Erro de conexão ao buscar usuário:", err);
+        //setUserError("Erro de conexão ao buscar usuário");
       })
       .finally(() => setUserLoading(false));
   }, []);
@@ -187,19 +192,21 @@ export default function Home() {
         )}
 
         {/* Exibe mensagem de boas-vindas se logado */}
-        {isAuthenticated ? (
+        {!userLoading && isAuthenticated && (
           <section className="container my-6">
             <div className="bg-green-50 border border-green-200 rounded p-4 mb-4">
-              <div className="text-green-800 text-lg font-semibold mb-2">Seja bem-vindo, {userData.name || userData.full_name || userData.email}!</div>
-              <div><b>ID:</b> {userData.id}</div>
-              <div><b>Email:</b> {userData.email}</div>
-              <div><b>Nome:</b> {userData.name || userData.full_name || "-"}</div>
-              <div><b>Empresa (Razão Social):</b> {userData.company_name || userData.razao_social || "-"}</div>
-              <div><b>Endereço:</b> {userData.address || "-"}</div>
+              <div className="text-green-800 text-lg font-semibold mb-2">
+                Seja bem-vindo, {userData?.name || userData?.full_name || userData?.email}!
+              </div>
+              <div><b>ID:</b> {userData?.id}</div>
+              <div><b>Email:</b> {userData?.email}</div>
+              <div><b>Nome:</b> {userData?.name || userData?.full_name || "-"}</div>
+              <div><b>Empresa (Razão Social):</b> {userData?.company_name || userData?.razao_social || "-"}</div>
+              <div><b>Endereço:</b> {userData?.address || "-"}</div>
             </div>
           </section>
-        ) : null}
-
+        )}
+        
         {/* === HERO BANNER === */}
         {/* TODO: Substitua a URL da imagem de fundo abaixo */}
         <section 
