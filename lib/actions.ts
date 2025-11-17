@@ -1,209 +1,328 @@
 "use server"
 
-import { createServerActionClient } from "@supabase/auth-helpers-nextjs"
-import { cookies } from "next/headers"
-import { redirect } from "next/navigation"
+import { redirect } from "next/navigation";
+import { getApiBaseUrlServer } from "./api";
 
-// Base URL do backend (usa variável de ambiente; fallback para localhost:3003)
-// Prioriza NEXT_PUBLIC_API_BASE_URL (seu backend local em :3003), depois NEXT_PUBLIC_SUPABASE_URL
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "http://localhost:3003"
-
-// ...existing code...
+// ----------------------------------------------------------------------
+// SIGN IN  (Frontend → Backend)
+// ----------------------------------------------------------------------
 export async function signIn(prevState: any, formData: FormData) {
-  // Check if formData is valid
-  if (!formData) {
-    return { error: "Form data is missing" }
-  }
+  const email = formData.get("email")?.toString().trim();
+  const password = formData.get("password")?.toString();
 
-  const email = formData.get("email")
-  const password = formData.get("password")
-
-  // Validate required fields
+  // Validação básica no frontend
   if (!email || !password) {
-    return { error: "Email and password are required" }
+    return { 
+      success: false,
+      error: "Email e senha são obrigatórios.",
+      fieldErrors: {}
+    };
   }
 
-  const cookieStore = cookies()
-  const supabase = createServerActionClient({ cookies: () => cookieStore })
+  // Validação de formato de email
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return { 
+      success: false,
+      error: "Por favor, insira um email válido.",
+      fieldErrors: { email: "Email inválido" }
+    };
+  }
+
+  const API_BASE = getApiBaseUrlServer();
 
   try {
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.toString(),
-      password: password.toString(),
-    })
-
-    if (error) {
-      return { error: error.message }
-    }
-
-    // Se precisar notificar o backend sobre login/session, chame aqui (opcional)
-    try {
-      await fetch(`${API_BASE}/api/auth/session-sync`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.toString() }),
-      })
-    } catch (e) {
-      // Não falha o login por conta dessa chamada; apenas log
-      console.warn("session-sync failed:", e)
-    }
-
-    // Return success instead of redirecting directly
-    return { success: true }
-  } catch (error) {
-    console.error("Login error:", error)
-    return { error: "An unexpected error occurred. Please try again." }
-  }
-}
-// ...existing code...
-export async function signUp(prevState: any, formData: FormData) {
-  // Check if formData is valid
-  if (!formData) {
-    return { error: "Form data is missing" }
-  }
-
-  const email = formData.get("email")
-  const password = formData.get("password")
-
-  // Validate required fields
-  if (!email || !password) {
-    return { error: "Email and password are required" }
-  }
-
-  const cookieStore = cookies()
-  const supabase = createServerActionClient({ cookies: () => cookieStore })
-
-  try {
-    const { data, error } = await supabase.auth.signUp({
-      email: email.toString(),
-      password: password.toString(),
-      options: {
-        emailRedirectTo:
-          process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ||
-          `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3001"}/dashboard`,
-        data: {
-          email_confirm: true,
-        },
+    const res = await fetch(`${API_BASE}/api/auth/login`, {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
       },
-    })
+      credentials: "include",
+      body: JSON.stringify({ email, password }),
+    });
 
-    if (error) {
-      return { error: error.message }
+    const data = await res.json();
+
+    // Backend retornou erro de validação
+    if (!res.ok) {
+      // Se o backend retornou erros de campo específicos
+      if (data.fieldErrors && typeof data.fieldErrors === 'object') {
+        return {
+          success: false,
+          error: data.message || "Erro ao fazer login",
+          fieldErrors: data.fieldErrors
+        };
+      }
+
+      // Erro geral do backend
+      return {
+        success: false,
+        error: data.message || "Falha ao fazer login. Verifique suas credenciais.",
+        fieldErrors: {}
+      };
     }
 
-    if (data.user && !data.user.email_confirmed_at) {
-      // Try to confirm the user programmatically
-      const { error: confirmError } = await supabase.auth.admin.updateUserById(data.user.id, { email_confirm: true })
-
-      if (confirmError) {
-        console.log("Could not auto-confirm user:", confirmError.message)
-      }
+    // Login bem-sucedido - backend deve retornar { success: true, user: {...} }
+    if (data.success && data.user) {
+      // Redireciona para dashboard
+      redirect("/dashboard");
     }
 
-    // Se houver usuário, crie dados no backend em vez de usar direto o supabase.from(...)
-    if (data.user) {
-      const userId = data.user.id
-      // Profile payload
-      const profilePayload = {
-        id: userId,
-        email: data.user.email,
-        company_name: "Empresa Demo",
-        address: "Rua das Flores, 123",
-        city: "São Paulo",
-        state: "SP",
-        zip_code: "01234-567",
-        phone: "(11) 99999-9999",
-        full_name: "Usuário Demo",
-      }
-
-      try {
-        // Ajuste a rota abaixo para a rota real do seu backend
-        await fetch(`${API_BASE}/api/user_profiles`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(profilePayload),
-        })
-      } catch (e) {
-        console.error("Error creating profile on backend:", e)
-      }
-
-      // Biodigester data
-      const biodigesterPayload = [
-        {
-          user_id: userId,
-          energy_generated: 150.5,
-          waste_processed: 200.0,
-          efficiency: 85.2,
-          temperature: 38.5,
-          ph_level: 7.2,
-          gas_production: 45.8,
-        },
-        {
-          user_id: userId,
-          energy_generated: 148.2,
-          waste_processed: 195.5,
-          efficiency: 83.1,
-          temperature: 37.8,
-          ph_level: 7.1,
-          gas_production: 44.2,
-        },
-      ]
-
-      try {
-        await fetch(`${API_BASE}/api/biodigester-data`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(biodigesterPayload),
-        })
-      } catch (e) {
-        console.error("Error inserting biodigester data on backend:", e)
-      }
-
-      // Activities
-      const activitiesPayload = [
-        {
-          user_id: userId,
-          type: "maintenance",
-          description: "Sistema de biodigestor iniciado com sucesso",
-        },
-        {
-          user_id: userId,
-          type: "alert",
-          description: "Temperatura dentro dos parâmetros normais",
-        },
-      ]
-
-      try {
-        await fetch(`${API_BASE}/api/activities`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(activitiesPayload),
-        })
-      } catch (e) {
-        console.error("Error creating activities on backend:", e)
-      }
+    // Resposta inesperada
+    return {
+      success: false,
+      error: "Resposta inesperada do servidor.",
+      fieldErrors: {}
+    };
+  } catch (err: any) {
+    console.error("LOGIN ERROR:", err);
+    
+    // Erro de rede/conexão
+    if (err.message?.includes('fetch') || err.message?.includes('network')) {
+      return {
+        success: false,
+        error: "Erro de conexão. Verifique se o backend está rodando.",
+        fieldErrors: {}
+      };
     }
 
-    return { success: "Conta criada com sucesso! Você já pode fazer login." }
-  } catch (error) {
-    console.error("Sign up error:", error)
-    return { error: "An unexpected error occurred. Please try again." }
+    return {
+      success: false,
+      error: "Erro inesperado ao fazer login. Tente novamente.",
+      fieldErrors: {}
+    };
   }
 }
-// ...existing code...
-export async function signOut() {
-  const cookieStore = cookies()
-  const supabase = createServerActionClient({ cookies: () => cookieStore })
 
-  await supabase.auth.signOut()
+// ----------------------------------------------------------------------
+// SIGN UP (Frontend → Backend)
+// ----------------------------------------------------------------------
+export async function signUp(prevState: any, formData: FormData) {
+  const email = formData.get("email")?.toString().trim();
+  const password = formData.get("password")?.toString();
+  const razao_social = formData.get("razao_social")?.toString().trim();
+  const cnpj = formData.get("cnpj")?.toString().replace(/\D/g, ""); // Remove formatação
+  const cep = formData.get("cep")?.toString().replace(/\D/g, ""); // Remove formatação
+  const numero = formData.get("numero")?.toString().trim();
+  const address = formData.get("address")?.toString().trim();
 
-  // Notifica backend (opcional) para limpar sessão server-side se necessário
+  // Validação básica
+  if (!email || !password) {
+    return {
+      success: false,
+      error: "Email e senha são obrigatórios.",
+      fieldErrors: {}
+    };
+  }
+
+  // Validação de formato de email
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return {
+      success: false,
+      error: "Por favor, insira um email válido.",
+      fieldErrors: { email: "Email inválido" }
+    };
+  }
+
+  // Validação de senha (mínimo 6 caracteres)
+  if (password.length < 6) {
+    return {
+      success: false,
+      error: "A senha deve ter pelo menos 6 caracteres.",
+      fieldErrors: { password: "Senha muito curta" }
+    };
+  }
+
+  // Validação de CNPJ (14 dígitos)
+  if (cnpj && cnpj.length !== 14) {
+    return {
+      success: false,
+      error: "CNPJ inválido. Deve conter 14 dígitos.",
+      fieldErrors: { cnpj: "CNPJ inválido" }
+    };
+  }
+
+  // Validação de CEP (8 dígitos)
+  if (cep && cep.length !== 8) {
+    return {
+      success: false,
+      error: "CEP inválido. Deve conter 8 dígitos.",
+      fieldErrors: { cep: "CEP inválido" }
+    };
+  }
+
+  const payload = {
+    email,
+    password,
+    razao_social: razao_social || "",
+    cnpj: cnpj || "",
+    cep: cep || "",
+    numero: numero || "",
+    address: address || "",
+  };
+
+  const API_BASE = getApiBaseUrlServer();
+
   try {
-    await fetch(`${API_BASE}/api/auth/signout`, { method: "POST", credentials: "include" })
+    const res = await fetch(`${API_BASE}/api/auth/signup`, {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+
+    // Backend retornou erro de validação
+    if (!res.ok) {
+      // Se o backend retornou erros de campo específicos
+      if (data.fieldErrors && typeof data.fieldErrors === 'object') {
+        return {
+          success: false,
+          error: data.message || "Erro ao criar conta",
+          fieldErrors: data.fieldErrors
+        };
+      }
+
+      // Erro geral do backend
+      return {
+        success: false,
+        error: data.message || "Falha ao criar conta. Verifique os dados informados.",
+        fieldErrors: {}
+      };
+    }
+
+    // Registro bem-sucedido
+    if (data.success) {
+      return {
+        success: true,
+        message: data.message || "Conta criada com sucesso! Redirecionando para login...",
+        fieldErrors: {}
+      };
+    }
+
+    // Resposta inesperada
+    return {
+      success: false,
+      error: "Resposta inesperada do servidor.",
+      fieldErrors: {}
+    };
+  } catch (err: any) {
+    console.error("SIGNUP ERROR:", err);
+    
+    // Erro de rede/conexão
+    if (err.message?.includes('fetch') || err.message?.includes('network')) {
+      return {
+        success: false,
+        error: "Erro de conexão. Verifique se o backend está rodando.",
+        fieldErrors: {}
+      };
+    }
+
+    return {
+      success: false,
+      error: "Erro inesperado ao criar conta. Tente novamente.",
+      fieldErrors: {}
+    };
+  }
+}
+
+// ----------------------------------------------------------------------
+// SIGN OUT (Frontend → Backend)
+// ----------------------------------------------------------------------
+export async function signOut() {
+  const API_BASE = getApiBaseUrlServer();
+  
+  try {
+    await fetch(`${API_BASE}/api/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+    });
   } catch (e) {
-    console.warn("backend signout failed:", e)
+    console.warn("logout backend falhou:", e);
+    // Continua com o logout mesmo se o backend falhar
   }
 
-  redirect("/login")
+  redirect("/login");
 }
-// ...existing code...
+
+// ----------------------------------------------------------------------
+// UPDATE PROFILE (Frontend → Backend)
+// ----------------------------------------------------------------------
+export async function updateProfile(prevState: any, formData: FormData) {
+  const userId = formData.get("userId")?.toString();
+
+  if (!userId) {
+    return {
+      success: false,
+      error: "Usuário inválido.",
+      fieldErrors: {}
+    };
+  }
+
+  const updates = {
+    full_name: formData.get("fullName")?.toString().trim(),
+    company_name: formData.get("companyName")?.toString().trim(),
+    address: formData.get("address")?.toString().trim(),
+    city: formData.get("city")?.toString().trim(),
+    state: formData.get("state")?.toString().trim(),
+    phone: formData.get("phone")?.toString().trim(),
+  };
+
+  const API_BASE = getApiBaseUrlServer();
+
+  try {
+    const res = await fetch(`${API_BASE}/api/user_profiles/${userId}`, {
+      method: "PUT",
+      headers: { 
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify(updates),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      // Se o backend retornou erros de campo específicos
+      if (data.fieldErrors && typeof data.fieldErrors === 'object') {
+        return {
+          success: false,
+          error: data.message || "Erro ao atualizar perfil",
+          fieldErrors: data.fieldErrors
+        };
+      }
+
+      return {
+        success: false,
+        error: data.message || "Erro ao atualizar perfil.",
+        fieldErrors: {}
+      };
+    }
+
+    return {
+      success: true,
+      message: data.message || "Perfil atualizado com sucesso!",
+      fieldErrors: {}
+    };
+  } catch (err: any) {
+    console.error("UPDATE PROFILE ERROR:", err);
+    
+    if (err.message?.includes('fetch') || err.message?.includes('network')) {
+      return {
+        success: false,
+        error: "Erro de conexão. Verifique se o backend está rodando.",
+        fieldErrors: {}
+      };
+    }
+
+    return {
+      success: false,
+      error: "Erro inesperado ao atualizar o perfil.",
+      fieldErrors: {}
+    };
+  }
+}

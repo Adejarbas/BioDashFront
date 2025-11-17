@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect } from "react"
 import { useFormStatus } from "react-dom"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -27,13 +28,18 @@ function SubmitButton() {
 }
 
 function RegisterPage() {
+  const router = useRouter()
   const [state, formAction] = useActionState(signUp, null)
 
   useEffect(() => {
     if (state?.success) {
-      window.location.href = "/login"
+      // Aguarda um pouco para mostrar a mensagem de sucesso antes de redirecionar
+      const timer = setTimeout(() => {
+        router.push("/login")
+      }, 2000)
+      return () => clearTimeout(timer)
     }
-  }, [state])
+  }, [state, router])
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-green-50 px-4 py-12">
@@ -50,11 +56,20 @@ function RegisterPage() {
         <form action={formAction}>
           <CardContent className="space-y-4">
             {(state as any)?.error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">{(state as any).error}</div>
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">
+                {(state as any).error}
+                {(state as any)?.fieldErrors && Object.keys((state as any).fieldErrors).length > 0 && (
+                  <ul className="mt-2 list-disc list-inside">
+                    {Object.entries((state as any).fieldErrors).map(([field, error]: [string, any]) => (
+                      <li key={field}>{String(error)}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             )}
             {(state as any)?.success && (
-              <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
-                {(state as any).success}
+              <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded text-sm">
+                {(state as any).message || (state as any).success}
               </div>
             )}
             <div className="space-y-2">
