@@ -34,6 +34,8 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
 
   useEffect(() => {
+    // O redirect já é feito no server action quando login é bem-sucedido
+    // Mas mantemos este useEffect caso precise de alguma lógica adicional
     if (state?.success) {
       router.push("/dashboard")
     }
@@ -56,7 +58,16 @@ export default function LoginPage() {
         <form action={formAction}>
           <CardContent className="space-y-4">
             {state?.error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">{state.error}</div>
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">
+                {state.error}
+                {state.fieldErrors && Object.keys(state.fieldErrors).length > 0 && (
+                  <ul className="mt-2 list-disc list-inside">
+                    {Object.entries(state.fieldErrors).map(([field, error]) => (
+                      <li key={field}>{String(error)}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             )}
             <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded text-sm">
               <p className="font-medium mb-1">Credenciais de Demonstração:</p>

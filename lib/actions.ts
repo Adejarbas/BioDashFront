@@ -1,129 +1,328 @@
 "use server"
 
 import { redirect } from "next/navigation";
-
-const API = process.env.NEXT_PUBLIC_API_BASE_URL || "";
+import { getApiBaseUrlServer } from "./api";
 
 // ----------------------------------------------------------------------
-// SIGN IN  (Frontend → Backend / Next API)
+// SIGN IN  (Frontend → Backend)
 // ----------------------------------------------------------------------
 export async function signIn(prevState: any, formData: FormData) {
-  const email = formData.get("email");
-  const password = formData.get("password");
+  const email = formData.get("email")?.toString().trim();
+  const password = formData.get("password")?.toString();
 
+  // Validação básica no frontend
   if (!email || !password) {
-    return { error: "Email e senha são obrigatórios." };
+    return { 
+      success: false,
+      error: "Email e senha são obrigatórios.",
+      fieldErrors: {}
+    };
   }
 
+  // Validação de formato de email
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return { 
+      success: false,
+      error: "Por favor, insira um email válido.",
+      fieldErrors: { email: "Email inválido" }
+    };
+  }
+
+  const API_BASE = getApiBaseUrlServer();
+
   try {
-    // Usar URL relativa se for Next API interna
-    const res = await fetch(`${API}/api/auth/login`, {
+    const res = await fetch(`${API_BASE}/api/auth/login`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+      },
       credentials: "include",
       body: JSON.stringify({ email, password }),
     });
 
     const data = await res.json();
 
+    // Backend retornou erro de validação
     if (!res.ok) {
-      return { error: data.message || "Falha ao fazer login" };
+      // Se o backend retornou erros de campo específicos
+      if (data.fieldErrors && typeof data.fieldErrors === 'object') {
+        return {
+          success: false,
+          error: data.message || "Erro ao fazer login",
+          fieldErrors: data.fieldErrors
+        };
+      }
+
+      // Erro geral do backend
+      return {
+        success: false,
+        error: data.message || "Falha ao fazer login. Verifique suas credenciais.",
+        fieldErrors: {}
+      };
     }
 
-    // Redireciona para dashboard APENAS se login for bem sucedido
-    redirect("/dashboard");
-  } catch (err) {
+    // Login bem-sucedido - backend deve retornar { success: true, user: {...} }
+    if (data.success && data.user) {
+      // Redireciona para dashboard
+      redirect("/dashboard");
+    }
+
+    // Resposta inesperada
+    return {
+      success: false,
+      error: "Resposta inesperada do servidor.",
+      fieldErrors: {}
+    };
+  } catch (err: any) {
     console.error("LOGIN ERROR:", err);
-    return { error: "Erro inesperado ao fazer login." };
+    
+    // Erro de rede/conexão
+    if (err.message?.includes('fetch') || err.message?.includes('network')) {
+      return {
+        success: false,
+        error: "Erro de conexão. Verifique se o backend está rodando.",
+        fieldErrors: {}
+      };
+    }
+
+    return {
+      success: false,
+      error: "Erro inesperado ao fazer login. Tente novamente.",
+      fieldErrors: {}
+    };
   }
 }
 
 // ----------------------------------------------------------------------
-// SIGN UP (Frontend → Backend / Next API)
+// SIGN UP (Frontend → Backend)
 // ----------------------------------------------------------------------
 export async function signUp(prevState: any, formData: FormData) {
-  const payload = {
-    email: formData.get("email"),
-    password: formData.get("password"),
-    full_name: formData.get("fullName"),
-    company_name: formData.get("companyName"),
-  };
+  const email = formData.get("email")?.toString().trim();
+  const password = formData.get("password")?.toString();
+  const razao_social = formData.get("razao_social")?.toString().trim();
+  const cnpj = formData.get("cnpj")?.toString().replace(/\D/g, ""); // Remove formatação
+  const cep = formData.get("cep")?.toString().replace(/\D/g, ""); // Remove formatação
+  const numero = formData.get("numero")?.toString().trim();
+  const address = formData.get("address")?.toString().trim();
 
-  if (!payload.email || !payload.password) {
-    return { error: "Email e senha são obrigatórios." };
+  // Validação básica
+  if (!email || !password) {
+    return {
+      success: false,
+      error: "Email e senha são obrigatórios.",
+      fieldErrors: {}
+    };
   }
 
+  // Validação de formato de email
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return {
+      success: false,
+      error: "Por favor, insira um email válido.",
+      fieldErrors: { email: "Email inválido" }
+    };
+  }
+
+  // Validação de senha (mínimo 6 caracteres)
+  if (password.length < 6) {
+    return {
+      success: false,
+      error: "A senha deve ter pelo menos 6 caracteres.",
+      fieldErrors: { password: "Senha muito curta" }
+    };
+  }
+
+  // Validação de CNPJ (14 dígitos)
+  if (cnpj && cnpj.length !== 14) {
+    return {
+      success: false,
+      error: "CNPJ inválido. Deve conter 14 dígitos.",
+      fieldErrors: { cnpj: "CNPJ inválido" }
+    };
+  }
+
+  // Validação de CEP (8 dígitos)
+  if (cep && cep.length !== 8) {
+    return {
+      success: false,
+      error: "CEP inválido. Deve conter 8 dígitos.",
+      fieldErrors: { cep: "CEP inválido" }
+    };
+  }
+
+  const payload = {
+    email,
+    password,
+    razao_social: razao_social || "",
+    cnpj: cnpj || "",
+    cep: cep || "",
+    numero: numero || "",
+    address: address || "",
+  };
+
+  const API_BASE = getApiBaseUrlServer();
+
   try {
-    // Corrigir rota para signup (supondo /api/auth/signup)
-    const res = await fetch(`${API}/api/auth/signup`, {
+    const res = await fetch(`${API_BASE}/api/auth/signup`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+      },
       credentials: "include",
       body: JSON.stringify(payload),
     });
 
     const data = await res.json();
 
+    // Backend retornou erro de validação
     if (!res.ok) {
-      return { error: data.message || "Falha ao criar conta" };
+      // Se o backend retornou erros de campo específicos
+      if (data.fieldErrors && typeof data.fieldErrors === 'object') {
+        return {
+          success: false,
+          error: data.message || "Erro ao criar conta",
+          fieldErrors: data.fieldErrors
+        };
+      }
+
+      // Erro geral do backend
+      return {
+        success: false,
+        error: data.message || "Falha ao criar conta. Verifique os dados informados.",
+        fieldErrors: {}
+      };
     }
 
-    return { success: "Conta criada com sucesso! Faça login." };
-  } catch (err) {
+    // Registro bem-sucedido
+    if (data.success) {
+      return {
+        success: true,
+        message: data.message || "Conta criada com sucesso! Redirecionando para login...",
+        fieldErrors: {}
+      };
+    }
+
+    // Resposta inesperada
+    return {
+      success: false,
+      error: "Resposta inesperada do servidor.",
+      fieldErrors: {}
+    };
+  } catch (err: any) {
     console.error("SIGNUP ERROR:", err);
-    return { error: "Erro inesperado ao criar conta." };
+    
+    // Erro de rede/conexão
+    if (err.message?.includes('fetch') || err.message?.includes('network')) {
+      return {
+        success: false,
+        error: "Erro de conexão. Verifique se o backend está rodando.",
+        fieldErrors: {}
+      };
+    }
+
+    return {
+      success: false,
+      error: "Erro inesperado ao criar conta. Tente novamente.",
+      fieldErrors: {}
+    };
   }
 }
 
 // ----------------------------------------------------------------------
-// SIGN OUT (Frontend → Backend / Next API)
+// SIGN OUT (Frontend → Backend)
 // ----------------------------------------------------------------------
 export async function signOut() {
+  const API_BASE = getApiBaseUrlServer();
+  
   try {
-    // Corrigir rota para logout (exemplo /api/auth/logout)
-    await fetch(`${API}/api/auth/logout`, {
+    await fetch(`${API_BASE}/api/auth/logout`, {
       method: "POST",
       credentials: "include",
     });
   } catch (e) {
     console.warn("logout backend falhou:", e);
+    // Continua com o logout mesmo se o backend falhar
   }
 
   redirect("/login");
 }
 
 // ----------------------------------------------------------------------
-// UPDATE PROFILE (Frontend → Backend / Next API)
+// UPDATE PROFILE (Frontend → Backend)
 // ----------------------------------------------------------------------
 export async function updateProfile(prevState: any, formData: FormData) {
-  const userId = formData.get("userId"); // você decide de onde vem (session, etc.)
+  const userId = formData.get("userId")?.toString();
 
-  if (!userId) return { error: "Usuário inválido." };
+  if (!userId) {
+    return {
+      success: false,
+      error: "Usuário inválido.",
+      fieldErrors: {}
+    };
+  }
 
   const updates = {
-    full_name: formData.get("fullName"),
-    company_name: formData.get("companyName"),
-    address: formData.get("address"),
-    city: formData.get("city"),
-    state: formData.get("state"),
-    phone: formData.get("phone"),
+    full_name: formData.get("fullName")?.toString().trim(),
+    company_name: formData.get("companyName")?.toString().trim(),
+    address: formData.get("address")?.toString().trim(),
+    city: formData.get("city")?.toString().trim(),
+    state: formData.get("state")?.toString().trim(),
+    phone: formData.get("phone")?.toString().trim(),
   };
 
+  const API_BASE = getApiBaseUrlServer();
+
   try {
-    const res = await fetch(`${API}/user_profiles/${userId}`, {
+    const res = await fetch(`${API_BASE}/api/user_profiles/${userId}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+      },
       credentials: "include",
       body: JSON.stringify(updates),
     });
 
+    const data = await res.json();
+
     if (!res.ok) {
-      return { error: "Erro ao atualizar perfil." };
+      // Se o backend retornou erros de campo específicos
+      if (data.fieldErrors && typeof data.fieldErrors === 'object') {
+        return {
+          success: false,
+          error: data.message || "Erro ao atualizar perfil",
+          fieldErrors: data.fieldErrors
+        };
+      }
+
+      return {
+        success: false,
+        error: data.message || "Erro ao atualizar perfil.",
+        fieldErrors: {}
+      };
     }
 
-    return { success: "Perfil atualizado com sucesso!" };
-  } catch (err) {
+    return {
+      success: true,
+      message: data.message || "Perfil atualizado com sucesso!",
+      fieldErrors: {}
+    };
+  } catch (err: any) {
     console.error("UPDATE PROFILE ERROR:", err);
-    return { error: "Erro inesperado ao atualizar o perfil." };
+    
+    if (err.message?.includes('fetch') || err.message?.includes('network')) {
+      return {
+        success: false,
+        error: "Erro de conexão. Verifique se o backend está rodando.",
+        fieldErrors: {}
+      };
+    }
+
+    return {
+      success: false,
+      error: "Erro inesperado ao atualizar o perfil.",
+      fieldErrors: {}
+    };
   }
 }
