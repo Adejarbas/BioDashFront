@@ -1,5 +1,6 @@
 // app/dashboard/page.tsx
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DashboardHeader } from "@/components/dashboard-header";
@@ -34,7 +35,21 @@ type IndicatorRow = {
 }
 
 async function fetchJSON(url: string) {
-  const res = await fetch(url, { method: "GET", cache: "no-store", credentials: "include" });
+  const cookieStore = await cookies();
+  const cookieHeader = cookieStore.getAll()
+    .map(cookie => `${cookie.name}=${cookie.value}`)
+    .join('; ');
+  
+  const headers: HeadersInit = {};
+  if (cookieHeader) {
+    headers.Cookie = cookieHeader;
+  }
+  
+  const res = await fetch(url, { 
+    method: "GET", 
+    cache: "no-store",
+    headers,
+  });
   if (res.status === 401) return { auth: false };
   if (!res.ok) throw new Error(`Fetch failed ${res.status} ${res.statusText}`);
   const j = await res.json();

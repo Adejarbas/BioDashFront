@@ -30,6 +30,11 @@ export async function signIn(prevState: any, formData: FormData) {
   }
 
   const API_BASE = getApiBaseUrlServer();
+  
+  // Log para debug
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[LOGIN] Fazendo requisição para:', `${API_BASE}/api/auth/login`);
+  }
 
   try {
     const res = await fetch(`${API_BASE}/api/auth/login`, {
@@ -41,7 +46,29 @@ export async function signIn(prevState: any, formData: FormData) {
       body: JSON.stringify({ email, password }),
     });
 
-    const data = await res.json();
+    // Log para debug (apenas em desenvolvimento)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[LOGIN] Status:', res.status);
+      console.log('[LOGIN] Headers:', Object.fromEntries(res.headers.entries()));
+    }
+
+    let data: any;
+    try {
+      const text = await res.text();
+      data = text ? JSON.parse(text) : {};
+    } catch (parseError) {
+      console.error('[LOGIN] Erro ao fazer parse da resposta:', parseError);
+      return {
+        success: false,
+        error: "Resposta inválida do servidor.",
+        fieldErrors: {}
+      };
+    }
+
+    // Log da resposta para debug
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[LOGIN] Resposta do backend:', JSON.stringify(data, null, 2));
+    }
 
     // Backend retornou erro de validação
     if (!res.ok) {
@@ -62,28 +89,55 @@ export async function signIn(prevState: any, formData: FormData) {
       };
     }
 
-    // Login bem-sucedido - backend deve retornar { success: true, user: {...} }
-    if (data.success && data.user) {
-      // Redireciona para dashboard
+    // Login bem-sucedido - aceita diferentes formatos de resposta
+    // Formato 1: { success: true, user: {...} }
+    // Formato 2: { success: true, data: { user: {...} } }
+    // Formato 3: { user: {...} } (sem campo success)
+    // Formato 4: Status 200/201/204 sem body (apenas cookie de sessão)
+    
+    const hasUser = data.user || (data.data && data.data.user);
+    const isSuccess = data.success !== false; // Considera sucesso se não for explicitamente false
+    const isSuccessStatus = res.status === 200 || res.status === 201 || res.status === 204;
+    
+    // Se o status indica sucesso (200/201/204), redireciona para dashboard
+    // Isso funciona mesmo se o backend só configurou cookies de sessão sem retornar dados
+    if (isSuccessStatus && isSuccess) {
       redirect("/dashboard");
     }
 
-    // Resposta inesperada
+    // Se tem user na resposta, também redireciona (mesmo que o status seja diferente)
+    if (hasUser && isSuccess) {
+      redirect("/dashboard");
+    }
+
+    // Resposta inesperada - log detalhado para debug
+    console.error('[LOGIN] Resposta inesperada:', {
+      status: res.status,
+      data: data,
+      hasUser: hasUser,
+      isSuccess: isSuccess
+    });
+
     return {
       success: false,
-      error: "Resposta inesperada do servidor.",
+      error: data.message || "Resposta inesperada do servidor. Verifique os logs do console.",
       fieldErrors: {}
     };
   } catch (err: any) {
     console.error("LOGIN ERROR:", err);
     
     // Erro de rede/conexão
-    if (err.message?.includes('fetch') || err.message?.includes('network')) {
+    if (err.message?.includes('fetch') || err.message?.includes('network') || err.code === 'ECONNREFUSED') {
       return {
         success: false,
-        error: "Erro de conexão. Verifique se o backend está rodando.",
+        error: "Erro de conexão. Verifique se o backend está rodando em " + API_BASE,
         fieldErrors: {}
       };
+    }
+
+    // Se o erro for um redirect (Next.js), deixa passar
+    if (err.message?.includes('NEXT_REDIRECT')) {
+      throw err;
     }
 
     return {
