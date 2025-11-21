@@ -130,7 +130,7 @@ async function ensureProfileRow(user: SupaUser) {
   const { error } = await supabase
     .from("user_profiles")
     .select("id")
-    .eq("id", user.id)
+    .eq("id", user?.id)
     .single()
 
   if (error) {
@@ -139,9 +139,9 @@ async function ensureProfileRow(user: SupaUser) {
       /no rows?|Results contain 0 rows/i.test(error.message || "")
     if (notFound) {
       const { error: insertErr } = await supabase.from("user_profiles").insert({
-        id: user.id,
+        id: user?.id,
         name: "",
-        email: user.email, // se existir coluna email no perfil
+        email: user?.email, // se existir coluna email no perfil
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
