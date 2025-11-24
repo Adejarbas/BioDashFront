@@ -4,6 +4,7 @@
 import Link from "next/link";
 import Image from "next/image"; // Importado para o logo
 import { useState, useEffect, useMemo } from "react";
+import { supabase } from "@/lib/supabase/client";
 
 // --- Imports de Componentes UI ---
 import { Button } from "@/components/ui/button";
@@ -44,10 +45,14 @@ type Plano = {
 
 // --- Constantes ---
 const PLANOS: Plano[] = [
-  { id: 'essencial', valor: 500, nome: 'Plano Essencial', preco: 'R$5/mês' },
-  { id: 'pro', valor: 1000, nome: 'Plano Profissional', preco: 'R$10/mês' },
-  { id: 'premium', valor: 1500, nome: 'Plano Premium', preco: 'R$15/mês' },
+  { id: 'essencial', valor: 500, nome: 'Plano Essencial', preco: 'R$500/mês' },
+  { id: 'pro', valor: 1000, nome: 'Plano Profissional', preco: 'R$1000/mês' },
+  { id: 'premium', valor: 1500, nome: 'Plano Premium', preco: 'R$1500/mês' },
 ];
+
+// Base URL do backend (porta 3003) via .env
+// Usa NEXT_PUBLIC_API_BASE_URL; aceita NEXT_PUBLIC_BACKEND_URL como legado; remove barras finais.
+const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3003').replace(/\/+$/,'');
 
 export default function Home() {
   // --- Estados ---
@@ -71,43 +76,85 @@ export default function Home() {
   return true;
 }, [userData, userLoading]);
 
+  // Nome exibido no cumprimento: somente nome (sem fallback para email)
+  const displayName = useMemo(() => {
+    const n = (userData?.name || userData?.full_name || "").trim()
+    return n
+  }, [userData])
+
+  // Helper: busca nome do perfil em public.user_profiles
+  const loadProfileName = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("user_profiles")
+        .select("name")
+        .eq("id", userId)
+        .single()
+
+      if (!error && data?.name) {
+        setUserData((prev) => ({ ...(prev || { id: userId, email: "" }), name: String(data.name) }))
+      }
+    } catch {}
+  }
+
   // --- Effects ---
   
   // Buscar dados do usuário autenticado
   useEffect(() => {
-    setUserLoading(true);
-    fetch("/api/user")
-      .then(async (res) => {
-        const data = await res.json();
-
-        if (res.ok && data.success) {
-          // 1. SUCESSO: Usuário está logado
-          setUserData(data.user);
-          setUserError(""); 
-        } 
-        else {
-          // 2. FALHA (qualquer tipo): Pode ser 401, 500, ou 200 com success:false
-          const errorMessage = data.message || "Erro desconhecido ao buscar usuário";
-
-          // 3. VERIFICAR se a falha é um "Não logado" esperado
-          //    Verificamos o status 401 OU a mensagem "unauthorized"
-          if (res.status === 401 || errorMessage.toLowerCase().includes('unauthorized')) {
-            // É um "não logado" esperado. NÃO mostrar erro.
-            setUserError("");
-          } 
-          else {
-            // É um erro REAL (ex: 500, "database connection failed", etc)
-            // SÓ AGORA definimos o erro
-            setUserError(errorMessage);
-          }
+    const checkUser = async () => {
+      setUserLoading(true);
+      try {
+        const { data: { user }, error } = await supabase.auth.getUser();
+        
+        if (error || !user) {
+          setUserData(null);
+          setUserError("");
+        } else {
+          setUserData({
+            id: user.id,
+            email: user.email || "",
+            name: user.user_metadata?.name,
+            full_name: user.user_metadata?.full_name,
+            company_name: user.user_metadata?.company_name,
+            razao_social: user.user_metadata?.razao_social,
+            address: user.user_metadata?.address,
+          });
+          // Carregar nome salvo nas Configurações (user_profiles.name)
+          await loadProfileName(user.id)
+          setUserError("");
         }
-      })
-      .catch((err) => {
-        // 4. ERRO DE REDE teste para verificar conexão com o banco \/
-        //console.error("Erro de conexão ao buscar usuário:", err);
-        //setUserError("Erro de conexão ao buscar usuário");
-      })
-      .finally(() => setUserLoading(false));
+      } catch (err) {
+        console.error("Erro ao buscar usuário:", err);
+        setUserData(null);
+        setUserError("");
+      } finally {
+        setUserLoading(false);
+      }
+    };
+    
+    checkUser();
+    
+    // Listener para mudanças no estado de autenticação
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        setUserData({
+          id: session.user.id,
+          email: session.user.email || "",
+          name: session.user.user_metadata?.name,
+          full_name: session.user.user_metadata?.full_name,
+          company_name: session.user.user_metadata?.company_name,
+          razao_social: session.user.user_metadata?.razao_social,
+          address: session.user.user_metadata?.address,
+        });
+        await loadProfileName(session.user.id)
+      } else {
+        setUserData(null);
+      }
+    });
+    
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   // Carregar avaliações do localStorage
@@ -123,18 +170,48 @@ export default function Home() {
     setLoadingPlan((prev) => ({ ...prev, [plano.id]: true }));
     setErrorPlan((prev) => ({ ...prev, [plano.id]: "" }));
     try {
-      const res = await fetch("/api/stripe/checkout-session", {
+      const res = await fetch(`${API_BASE}/api/stripe/checkout-session`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: plano.valor, planId: plano.id })
+        credentials: 'include', // envia cookie de sessão (Supabase)
+        body: JSON.stringify({
+          // Envia ambas as convenções para máxima compatibilidade
+          amount: plano.valor, // em centavos (como antes)
+          productName: plano.nome, // nome legível
+          planId: plano.id // id interno
+        })
       });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        setErrorPlan((prev) => ({ ...prev, [plano.id]: data.error || "Erro ao criar checkout" }));
+
+      if (!res.ok) {
+        let msg = "Erro ao criar checkout";
+        try {
+          const errJson = await res.json();
+          console.error("Erro do backend:", errJson);
+          msg = errJson.error || errJson.message || msg;
+        } catch {}
+        setErrorPlan((prev) => ({ ...prev, [plano.id]: msg }));
+        return;
       }
+
+      const data = await res.json();
+      console.log("Resposta do backend:", data); // DEBUG
+      
+      // Tenta diferentes formatos de resposta
+      const checkoutUrl = data?.url || data?.sessionUrl || data?.checkoutUrl || data?.data?.url;
+      
+      if (checkoutUrl) {
+        console.log("Redirecionando para:", checkoutUrl);
+        window.location.href = checkoutUrl;
+        return;
+      }
+      
+      console.error("URL não encontrada na resposta:", data);
+      setErrorPlan((prev) => ({ 
+        ...prev, 
+        [plano.id]: data?.error || data?.message || "Resposta inválida do servidor. Verifique o console." 
+      }));
     } catch (err) {
+      console.error("Erro na requisição:", err);
       setErrorPlan((prev) => ({ ...prev, [plano.id]: "Erro de conexão com o servidor" }));
     } finally {
       setLoadingPlan((prev) => ({ ...prev, [plano.id]: false }));
@@ -146,38 +223,58 @@ export default function Home() {
     <div className="flex flex-col min-h-screen bg-gray-50">
       
       {/* === HEADER (CABEÇALHO) === */}
-      <header className="sticky top-0 z-50 px-6 py-4 border-b bg-white/90 backdrop-blur-sm">
-        <div className="container flex items-center justify-between">
-          
-          {/* Logo com link para a home */}
-          <Link href="/">
-            <Image
-              src="/logo-biogen.png" 
-              alt="Logo BioGen"
-              width={140} // Ajuste a LARGURA conforme necessário
-              height={40} // Ajuste a ALTURA conforme necessário
-              priority 
-            />
-          </Link>
+      {!isAuthenticated ? (
+        <header className="sticky top-0 z-50 px-6 py-4 border-b bg-white/90 backdrop-blur-sm">
+          <div className="container flex items-center justify-between">
+            
+            {/* Logo com link para a home */}
+            <Link href="/">
+              <Image
+                src="/logo-biogen.png" 
+                alt="Logo BioGen"
+                width={140}
+                height={40}
+                priority 
+              />
+            </Link>
 
-          <nav className="flex items-center gap-4">
-            {!isAuthenticated ? (
-              <>
-                <Link href="/login">
-                  <Button variant="outline">Entrar</Button>
-                </Link>
-                <Link href="/register">
-                  <Button>Registrar</Button>
-                </Link>
-              </>
-            ) : (
-              <Link href="/dashboard">
-                <Button>Meu Perfil</Button>
+            <nav className="flex items-center gap-4">
+              <Link href="/login">
+                <Button variant="outline">Entrar</Button>
               </Link>
-            )}
+              <Link href="/register">
+                <Button>Registrar</Button>
+              </Link>
+            </nav>
+          </div>
+        </header>
+      ) : (
+        <header className="sticky top-0 z-50 flex h-16 items-center gap-4 bio-header px-6">
+          <Link href="/" className="flex items-center gap-2 font-semibold">
+            <span className="text-xl">🍃 BioDash</span>
+          </Link>
+          <nav className="ml-auto flex gap-6">
+            <Link href="/dashboard" className="text-sm font-medium text-white hover:text-green-100 transition-colors">
+              Dashboard
+            </Link>
+            <Link href="/indicators" className="text-sm font-medium text-green-100 hover:text-white transition-colors">
+              Indicadores
+            </Link>
+            <Link href="/settings" className="text-sm font-medium text-green-100 hover:text-white transition-colors">
+              Configurações
+            </Link>
+            <button
+              onClick={async () => {
+                await supabase.auth.signOut();
+                window.location.href = "/login";
+              }}
+              className="text-sm font-medium text-green-100 hover:text-white transition-colors"
+            >
+              Sair
+            </button>
           </nav>
-        </div>
-      </header>
+        </header>
+      )}
       
       {/* === MAIN (CONTEÚDO) === */}
       <main className="flex-1">
@@ -196,13 +293,9 @@ export default function Home() {
           <section className="container my-6">
             <div className="bg-green-50 border border-green-200 rounded p-4 mb-4">
               <div className="text-green-800 text-lg font-semibold mb-2">
-                Seja bem-vindo, {userData?.name || userData?.full_name || userData?.email}!
+                Seja bem-vindo, {displayName}!
               </div>
-              <div><b>ID:</b> {userData?.id}</div>
-              <div><b>Email:</b> {userData?.email}</div>
-              <div><b>Nome:</b> {userData?.name || userData?.full_name || "-"}</div>
-              <div><b>Empresa (Razão Social):</b> {userData?.company_name || userData?.razao_social || "-"}</div>
-              <div><b>Endereço:</b> {userData?.address || "-"}</div>
+              
             </div>
           </section>
         )}

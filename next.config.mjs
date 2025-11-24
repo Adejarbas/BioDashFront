@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  reactStrictMode: false, // Desabilita StrictMode para evitar dupla renderização do mapa
   eslint: {
     ignoreDuringBuilds: true,
   },

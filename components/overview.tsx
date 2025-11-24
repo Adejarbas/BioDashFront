@@ -142,7 +142,7 @@ export function Overview() {
       </div>
 
       <TabsContent value="all" className="space-y-4 mt-4">
-        <div className="h-[300px] bg-white p-4 rounded-lg border border-green-100">
+        <div id="overview-chart-all" className="h-[300px] bg-white p-4 rounded-lg border border-green-100">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart
               data={chartData}
@@ -184,7 +184,7 @@ export function Overview() {
       </TabsContent>
 
       <TabsContent value="waste" className="space-y-4 mt-4">
-        <div className="h-[300px] bg-white p-4 rounded-lg border border-green-100">
+        <div id="overview-chart-waste" className="h-[300px] bg-white p-4 rounded-lg border border-green-100">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
               data={chartData}
@@ -203,7 +203,7 @@ export function Overview() {
       </TabsContent>
 
       <TabsContent value="energy" className="space-y-4 mt-4">
-        <div className="h-[300px] bg-white p-4 rounded-lg border border-green-100">
+        <div id="overview-chart-energy" className="h-[300px] bg-white p-4 rounded-lg border border-green-100">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
               data={chartData}
@@ -222,7 +222,7 @@ export function Overview() {
       </TabsContent>
 
       <TabsContent value="tax" className="space-y-4 mt-4">
-        <div className="h-[300px] bg-white p-4 rounded-lg border border-green-100">
+        <div id="overview-chart-tax" className="h-[300px] bg-white p-4 rounded-lg border border-green-100">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
               data={chartData}
