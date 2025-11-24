@@ -225,11 +225,27 @@ export default function SettingsPage() {
 
         if (error) throw error
 
+        // Resolve avatar display URL (suporte a bucket privado armazenando apenas caminho)
+        let avatarStored = userData?.avatar_url || "/abstract-profile.png"
+        let avatarDisplay = avatarStored
+        if (AVATAR_BUCKET_IS_PRIVATE) {
+          // Se o valor armazenado já é uma URL http, tenta usar ou refazer assinatura caso tenha expirado
+          if (!/^https?:\/\//i.test(avatarStored)) {
+            const signed = await supabase.storage
+              .from(STORAGE_BUCKET)
+              .createSignedUrl(avatarStored, 60 * 60) // 1h
+            if (signed.data?.signedUrl) avatarDisplay = signed.data.signedUrl
+          } else {
+            // opcional: poderia validar expiração, mas mantemos simples
+            avatarDisplay = avatarStored
+          }
+        }
+
         setProfileData({
           name: userData?.name || "",
           company: userData?.company || "",
           email: currentUser.email || "",
-          avatar: userData?.avatar_url || "/abstract-profile.png",
+          avatar: avatarDisplay,
           address: userData?.address || "",
           city: userData?.city || "",
           state: userData?.state || "",
@@ -434,28 +450,32 @@ export default function SettingsPage() {
         throw uploadError
       }
 
-      let publicUrl: string
+      // Para bucket privado vamos armazenar APENAS o caminho e gerar URL assinada dinamicamente.
+      // Para bucket público, armazenamos a URL pública.
+      let storedValue: string
+      let displayUrl: string
       if (AVATAR_BUCKET_IS_PRIVATE) {
+        storedValue = filePath
         const signed = await supabase.storage
           .from(STORAGE_BUCKET)
-          .createSignedUrl(filePath, 60 * 60 * 24)
-        if (signed.error || !signed.data?.signedUrl) throw signed.error
-        publicUrl = signed.data.signedUrl
+          .createSignedUrl(filePath, 60 * 60) // 1h
+        displayUrl = signed.data?.signedUrl || previewUrl // fallback preview
       } else {
         const { data } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(filePath)
-        publicUrl = data.publicUrl
+        storedValue = data.publicUrl
+        displayUrl = storedValue
       }
 
       const { error: updateError } = await supabase
         .from("user_profiles")
         .upsert(
-          { id: user.id, avatar_url: publicUrl, updated_at: new Date().toISOString() },
+          { id: user.id, avatar_url: storedValue, updated_at: new Date().toISOString() },
           { onConflict: "id" }
         )
 
       if (updateError) throw updateError
 
-      setProfileData((prev) => ({ ...prev, avatar: publicUrl }))
+      setProfileData((prev) => ({ ...prev, avatar: displayUrl }))
       toast({
         title: "Foto atualizada",
         description: "Sua foto de perfil foi alterada com sucesso.",

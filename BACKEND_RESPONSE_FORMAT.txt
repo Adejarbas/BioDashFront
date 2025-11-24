@@ -1,0 +1,144 @@
+================================================================================
+PROMPT PARA EQUIPE DO BACKEND - FORMATO DE RESPOSTA STRIPE
+================================================================================
+
+Olá equipe do backend!
+
+O frontend está recebendo status 200 da rota de checkout, mas não consegue 
+redirecionar para o Stripe porque a resposta não contém a URL do checkout.
+
+📋 REQUISIÇÃO QUE O FRONTEND ESTÁ ENVIANDO:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+POST http://localhost:3003/api/stripe/checkout-session
+
+Headers:
+  Content-Type: application/json
+  Origin: http://localhost:3001
+
+Credentials: include (cookie de sessão)
+
+Body:
+{
+  "amount": 500,
+  "productName": "Plano Essencial",
+  "planId": "essencial"
+}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ FORMATO DE RESPOSTA ESPERADO:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Status: 200 OK
+
+Headers:
+  Content-Type: application/json
+  Access-Control-Allow-Origin: http://localhost:3001
+  Access-Control-Allow-Credentials: true
+
+Body (FORMATO CORRETO):
+{
+  "url": "https://checkout.stripe.com/c/pay/cs_test_xxxxxxxxxxxxx"
+}
+
+OU alternativamente (também suportado):
+{
+  "sessionUrl": "https://checkout.stripe.com/c/pay/cs_test_xxxxxxxxxxxxx"
+}
+
+OU:
+{
+  "checkoutUrl": "https://checkout.stripe.com/c/pay/cs_test_xxxxxxxxxxxxx"
+}
+
+OU:
+{
+  "data": {
+    "url": "https://checkout.stripe.com/c/pay/cs_test_xxxxxxxxxxxxx"
+  }
+}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔧 EXEMPLO DE IMPLEMENTAÇÃO NO BACKEND:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+
+app.post('/api/stripe/checkout-session', async (req, res) => {
+  try {
+    const { amount, productName, planId } = req.body;
+
+    // Criar sessão de checkout no Stripe
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{
+        price_data: {
+          currency: 'brl',
+          product_data: {
+            name: productName,
+            description: `Assinatura ${planId}`
+          },
+          unit_amount: amount, // valor em centavos
+          recurring: {
+            interval: 'month'
+          }
+        },
+        quantity: 1
+      }],
+      mode: 'subscription',
+      success_url: `${process.env.FRONTEND_URL}/dashboard?success=true`,
+      cancel_url: `${process.env.FRONTEND_URL}/?canceled=true`,
+      metadata: {
+        planId: planId
+      }
+    });
+
+    // ⚠️ IMPORTANTE: Retornar a URL da sessão
+    res.json({
+      url: session.url  // <- A URL do checkout do Stripe
+    });
+
+  } catch (error) {
+    console.error('Erro ao criar sessão:', error);
+    res.status(500).json({
+      error: 'Erro ao criar sessão de checkout',
+      message: error.message
+    });
+  }
+});
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️ PONTOS DE ATENÇÃO:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. O objeto `session` retornado pelo Stripe contém a propriedade `url`
+2. Essa URL deve ser retornada no JSON de resposta
+3. Não retornem o objeto `session` completo (muita informação desnecessária)
+4. Garantam que o status seja 200 quando der sucesso
+5. Em caso de erro, retornem status 400 ou 500 com { error: "mensagem" }
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📝 CHECKLIST:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[ ] Verificar se `stripe.checkout.sessions.create()` está sendo chamado
+[ ] Confirmar que `session.url` existe no objeto retornado pelo Stripe
+[ ] Garantir que a resposta JSON contém { url: session.url }
+[ ] Testar com curl/Postman se a URL está presente:
+
+curl -X POST http://localhost:3003/api/stripe/checkout-session \
+  -H "Content-Type: application/json" \
+  -d '{"amount":500,"productName":"Teste","planId":"essencial"}' \
+  | jq '.url'
+
+[ ] Se a URL aparecer no teste curl, avisar o frontend para testar novamente
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔍 PARA DEBUG:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Adicionem este log temporário no backend:
+
+const session = await stripe.checkout.sessions.create({...});
+console.log("Session URL:", session.url); // Deve mostrar a URL
+console.log("Session completa:", JSON.stringify(session, null, 2));
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Por favor, verifiquem se a resposta está no formato correto e me avisem!
+
+Obrigado! 🙏
+================================================================================
