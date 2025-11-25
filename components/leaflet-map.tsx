@@ -4,16 +4,10 @@ import { useEffect, useState, memo, useRef } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L, { LatLngTuple } from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from "@/lib/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-
-// Crie o cliente Supabase aqui, pois este é um componente do lado do cliente
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 // Corrigir ícones do Leaflet que quebram no Next.js
 if (typeof window !== 'undefined') {
@@ -32,47 +26,58 @@ type Marcador = {
   pos: LatLngTuple;
 };
 
-const cidades: Marcador[] = [
-  {
-    nome: "Uberlândia – MG",
-    pos: [-18.9146, -48.2757],
-    descricao: `Rodovia BR-452, km 142\nCEP 38407-049\nZona Rural\nUberlândia – MG`,
-  },
-  {
-    nome: "Holambra – SP",
-    pos: [-22.6406, -47.0481],
-    descricao: `Estrada Municipal HBR-333, s/n\nFazenda Ribeirão Zona Rural\nHolambra – SP\nCEP 13825-000`,
-  },
-  {
-    nome: "Aracati – CE",
-    pos: [-4.5586, -37.7676],
-    descricao: `Rodovia CE 263 de Aracati à Jaguaruana, Km 4,0\nMata Fresca, Zona Rural\nCEP 62800-000\nAracati – CE`,
-  },
-];
-
 // ========================
 //   Helpers de Supabase
 // ========================
 async function getCurrentUserId() {
-  const { data } = await supabase.auth.getUser();
-  return data?.user?.id ?? null;
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.user) {
+    console.error("Usuário não autenticado - sessão inexistente");
+    return null;
+  }
+  return session.user.id;
 }
 
 async function insertAddress(address: string): Promise<string | null> {
   const user_id = await getCurrentUserId();
-  if (!user_id) return null;
-  const { data, error } = await supabase.from("biodigestor_maps").insert([{ user_id, address }]).select("id").single();
-  if (error) {
-    console.error("Erro ao inserir endereço:", error);
+  if (!user_id) {
+    console.error("Usuário não autenticado");
     return null;
   }
-  return data?.id ?? null;
+  
+  console.log("Tentando inserir endereço:", address, "para user_id:", user_id);
+  
+  const addressJson = { full_address: address };
+  
+  const { data, error } = await supabase
+    .from("biodigestor_maps")
+    .insert([{ user_id, address: addressJson }])
+    .select("id")
+    .single();
+    
+  if (error) {
+    console.error("Erro ao inserir endereço:", error);
+    console.error("Detalhes do erro:", JSON.stringify(error, null, 2));
+    return null;
+  }
+  
+  console.log("Endereço inserido com sucesso:", data);
+  return data?.id?.toString() ?? null;
 }
 
 async function deleteAddress(dbId: string): Promise<boolean> {
   const user_id = await getCurrentUserId();
-  if (!user_id) return false;
-  const { error } = await supabase.from("biodigestor_maps").delete().eq("id", dbId).eq("user_id", user_id);
+  if (!user_id) {
+    console.error("Usuário não autenticado para deletar");
+    return false;
+  }
+  
+  const { error } = await supabase
+    .from("biodigestor_maps")
+    .delete()
+    .eq("id", parseInt(dbId))
+    .eq("user_id", user_id);
+    
   if (error) {
     console.error("Erro ao deletar endereço:", error);
     return false;
@@ -101,9 +106,9 @@ type LeafletMapProps = {
 
 export default function LeafletMap({ onAddMarkerClick }: LeafletMapProps = {}) {
   const [mapKey] = useState<number>(() => Date.now());
-  const [marcadores, setMarcadores] = useState<Marcador[]>(cidades);
-  const [coordenadas] = useState<LatLngTuple>(cidades[0].pos);
-  const [zoom] = useState(6);
+  const [marcadores, setMarcadores] = useState<Marcador[]>([]);
+  const [coordenadas] = useState<LatLngTuple>([-15.7942, -47.8825]); // Centro do Brasil (Brasília)
+  const [zoom] = useState(4);
   const mapRef = useRef<L.Map | null>(null);
 
   // Modal & formulário
@@ -143,8 +148,7 @@ export default function LeafletMap({ onAddMarkerClick }: LeafletMapProps = {}) {
     if (bairro) partes.push(bairro);
     if (cidade) partes.push(cidade);
     if (uf) partes.push(uf);
-    if (cep) partes.push(cep); // só números
-    // País ajuda Nominatim a priorizar Brasil
+    if (cep) partes.push(cep);
     partes.push("Brasil");
     return partes.filter(Boolean).join(", ");
   };
@@ -181,7 +185,6 @@ export default function LeafletMap({ onAddMarkerClick }: LeafletMapProps = {}) {
     }
   };
 
-  // Expor função para ser chamada de fora
   useEffect(() => {
     (window as any).__openBiodigestorModal = openNewMarkerModal;
     return () => {
@@ -193,7 +196,6 @@ export default function LeafletMap({ onAddMarkerClick }: LeafletMapProps = {}) {
     resetForm();
     setEditingId(m.dbId || null);
     setNome(m.nome);
-    // heurística simples para mostrar parte do endereço
     setLogradouro(m.descricao.split(",")[0] || "");
     setOpenModal(true);
   };
@@ -203,7 +205,6 @@ export default function LeafletMap({ onAddMarkerClick }: LeafletMapProps = {}) {
       return;
     }
 
-    // Se tem dbId, deleta do banco; senão, apenas remove localmente
     if (m.dbId) {
       const success = await deleteAddress(m.dbId);
       if (!success) {
@@ -212,13 +213,11 @@ export default function LeafletMap({ onAddMarkerClick }: LeafletMapProps = {}) {
       }
     }
 
-    // Remove do estado local
     setMarcadores((prev) => prev.filter((marcador) => 
       m.dbId ? marcador.dbId !== m.dbId : marcador !== m
     ));
   };
 
-  // Cleanup: destruir instância do mapa ao desmontar
   useEffect(() => {
     return () => {
       if (mapRef.current) {
@@ -232,24 +231,49 @@ export default function LeafletMap({ onAddMarkerClick }: LeafletMapProps = {}) {
   useEffect(() => {
     const fetchMarkers = async () => {
       const user_id = await getCurrentUserId();
-      if (!user_id) return;
-
-      const { data, error } = await supabase.from("biodigestor_maps").select("id, address, created_at").eq("user_id", user_id);
-      if (error || !data?.length) {
-        if(error) console.error("Erro ao buscar marcadores:", error);
+      if (!user_id) {
+        console.log("Usuário não autenticado, não buscando marcadores");
         return;
       }
+
+      console.log("Buscando marcadores para user_id:", user_id);
+
+      const { data, error } = await supabase
+        .from("biodigestor_maps")
+        .select("id, address, created_at")
+        .eq("user_id", user_id);
+        
+      if (error) {
+        console.error("Erro ao buscar marcadores:", error);
+        return;
+      }
+      
+      if (!data?.length) {
+        console.log("Nenhum marcador encontrado para este usuário");
+        return;
+      }
+
+      console.log("Marcadores encontrados:", data);
 
       const markers: Marcador[] = [];
       for (const row of data) {
         try {
-          const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(row.address)}`);
+          const addressStr = typeof row.address === 'string' 
+            ? row.address 
+            : (row.address as any)?.full_address || JSON.stringify(row.address);
+          
+          console.log("Geocodificando endereço:", addressStr);
+          
+          const resp = await fetch(
+            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addressStr)}`
+          );
           const json = await resp.json();
+          
           if (json.length > 0) {
             markers.push({
-              dbId: row.id,
-              nome: row.address.split(",")[0],
-              descricao: row.address,
+              dbId: row.id.toString(),
+              nome: addressStr.split(",")[0],
+              descricao: addressStr,
               pos: [parseFloat(json[0].lat), parseFloat(json[0].lon)],
             });
           }
@@ -257,7 +281,9 @@ export default function LeafletMap({ onAddMarkerClick }: LeafletMapProps = {}) {
           console.error("Erro ao geocodificar endereço:", row.address, e);
         }
       }
-      setMarcadores((prev) => [...prev, ...markers]);
+      
+      console.log("Marcadores processados:", markers);
+      setMarcadores(markers);
     };
     
     fetchMarkers();
@@ -266,60 +292,128 @@ export default function LeafletMap({ onAddMarkerClick }: LeafletMapProps = {}) {
   const submitMarker = async () => {
     setLoadingSubmit(true);
     setErrorSubmit(null);
+    
     try {
-      const addressFull = assembleAddress();
-      if (!logradouro || !cidade || !uf) {
-        setErrorSubmit("Preencha pelo menos logradouro, cidade e UF");
+      const user_id = await getCurrentUserId();
+      if (!user_id) {
+        setErrorSubmit("Você precisa estar logado para adicionar marcadores.");
+        setLoadingSubmit(false);
         return;
       }
 
-      // Estratégias de busca (da mais detalhada para a mais genérica)
+      const addressFull = assembleAddress();
+      
+      console.log("Endereço montado:", addressFull);
+      console.log("Usuário autenticado:", user_id);
+      
+      if (!logradouro || !cidade || !uf) {
+        setErrorSubmit("Preencha pelo menos logradouro, cidade e UF");
+        setLoadingSubmit(false);
+        return;
+      }
+
       const queries: string[] = [];
       const baseDet = [logradouro, numero, bairro, cidade, uf, "Brasil"].filter(Boolean).join(", ");
       queries.push(baseDet);
-      // sem bairro
       queries.push([logradouro, numero, cidade, uf, "Brasil"].filter(Boolean).join(", "));
-      // sem número
       queries.push([logradouro, cidade, uf, "Brasil"].filter(Boolean).join(", "));
-      // cidade + uf
       queries.push([cidade, uf, "Brasil"].join(", "));
 
       let lat: number | null = null;
       let lon: number | null = null;
+      
       for (const q of queries) {
         try {
-          const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`);
+          console.log("Tentando geocodificar:", q);
+          const resp = await fetch(
+            `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`,
+            {
+              headers: {
+                'User-Agent': 'BioDash/1.0'
+              }
+            }
+          );
+          
+          if (!resp.ok) {
+            console.warn("Erro na resposta da API:", resp.status);
+            continue;
+          }
+          
           const data = await resp.json();
-          if (Array.isArray(data) && data.length) {
+          console.log("Resposta da geocodificação:", data);
+          
+          if (Array.isArray(data) && data.length > 0) {
             lat = parseFloat(data[0].lat);
             lon = parseFloat(data[0].lon);
+            console.log("Coordenadas encontradas:", lat, lon);
             break;
           }
         } catch (err) {
           console.warn("Tentativa falhou para query:", q, err);
         }
+        
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
 
       if (lat === null || lon === null) {
-        setErrorSubmit("Não foi possível localizar o endereço. Tente ajustar (ex: remover complemento).");
+        setErrorSubmit("Não foi possível localizar o endereço. Tente ajustar os dados.");
+        setLoadingSubmit(false);
         return;
       }
 
       if (editingId) {
-        const { error } = await supabase.from("biodigestor_maps").update({ address: addressFull }).eq("id", editingId);
+        console.log("Atualizando marcador existente:", editingId);
+        const addressJson = { full_address: addressFull };
+        
+        const { error } = await supabase
+          .from("biodigestor_maps")
+          .update({ address: addressJson })
+          .eq("id", parseInt(editingId));
+          
         if (error) {
-          setErrorSubmit("Erro ao atualizar endereço");
+          console.error("Erro ao atualizar:", error);
+          setErrorSubmit("Erro ao atualizar endereço: " + error.message);
+          setLoadingSubmit(false);
           return;
         }
-        setMarcadores(prev => prev.map(m => m.dbId === editingId ? { ...m, nome: nome || "Biodigestor", descricao: addressFull, pos: [lat!, lon!] } : m));
+        
+        setMarcadores(prev => prev.map(m => 
+          m.dbId === editingId 
+            ? { ...m, nome: nome || "Biodigestor", descricao: addressFull, pos: [lat!, lon!] } 
+            : m
+        ));
+        
+        console.log("Marcador atualizado com sucesso");
       } else {
+        console.log("Inserindo novo marcador");
         const dbId = await insertAddress(addressFull);
-        setMarcadores(prev => [...prev, { dbId: dbId ?? undefined, nome: nome || "Biodigestor", descricao: addressFull, pos: [lat!, lon!] }]);
+        
+        if (!dbId) {
+          setErrorSubmit("Erro ao salvar no banco de dados. Verifique o console.");
+          setLoadingSubmit(false);
+          return;
+        }
+        
+        console.log("Marcador inserido com ID:", dbId);
+        
+        const novoMarcador: Marcador = { 
+          dbId: dbId, 
+          nome: nome || "Biodigestor", 
+          descricao: addressFull, 
+          pos: [lat!, lon!] 
+        };
+        
+        setMarcadores(prev => [...prev, novoMarcador]);
+        console.log("Marcador adicionado ao estado:", novoMarcador);
       }
+      
       setOpenModal(false);
+      resetForm();
+      console.log("Operação concluída com sucesso");
+      
     } catch (e) {
-      console.error("Erro ao salvar marcador", e);
-      setErrorSubmit("Erro inesperado ao salvar");
+      console.error("Erro ao salvar marcador:", e);
+      setErrorSubmit("Erro inesperado: " + (e as Error).message);
     } finally {
       setLoadingSubmit(false);
     }
@@ -358,7 +452,6 @@ export default function LeafletMap({ onAddMarkerClick }: LeafletMapProps = {}) {
                 </MapContainer>
           )}
       </div>
-      {/* Dialog fora do container para evitar clipping */}
       <Dialog open={openModal} onOpenChange={(o) => { if(!o) resetForm(); setOpenModal(o); }}>
         <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto z-[2000] bg-white">
           <DialogHeader>
@@ -409,7 +502,16 @@ export default function LeafletMap({ onAddMarkerClick }: LeafletMapProps = {}) {
             <div className="text-xs text-gray-600">
               Endereço completo: <span className="font-medium">{assembleAddress() || "(incompleto)"}</span>
             </div>
-            {errorSubmit && <div className="text-xs text-red-600">{errorSubmit}</div>}
+            {errorSubmit && (
+              <div className="text-xs text-red-600 bg-red-50 p-2 rounded">
+                {errorSubmit}
+                {errorSubmit.includes("logado") && (
+                  <a href="/login" className="block mt-2 text-blue-600 underline">
+                    Ir para página de login
+                  </a>
+                )}
+              </div>
+            )}
           </div>
           <DialogFooter className="flex gap-2 justify-end mt-4">
             <Button variant="outline" type="button" onClick={() => { setOpenModal(false); }}>Cancelar</Button>
