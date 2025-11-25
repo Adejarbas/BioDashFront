@@ -2,7 +2,7 @@
 
 // --- Imports do React e Next ---
 import Link from "next/link";
-import Image from "next/image"; // Importado para o logo
+import Image from "next/image";
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/lib/supabase/client";
 
@@ -11,11 +11,6 @@ import { Button } from "@/components/ui/button";
 
 // --- Imports de Ícones ---
 import { Recycle, LightningCharge, GraphUpArrow } from 'react-bootstrap-icons';
-
-
-// teste para verificar conexão com o banco \/
-// console.log("TESTE SUPABASE URL =>", process.env.NEXT_PUBLIC_SUPABASE_URL)
-
 
 // --- Tipos ---
 type User = {
@@ -37,10 +32,10 @@ type Avaliacao = {
 };
 
 type Plano = {
-  id: string; // ID único (ex: 'essencial')
-  valor: number; // Valor para o Stripe (em centavos)
+  id: string;
+  valor: number;
   nome: string;
-  preco: string; // Valor formatado (ex: 'R$5/mês')
+  preco: string;
 };
 
 // --- Constantes ---
@@ -50,14 +45,12 @@ const PLANOS: Plano[] = [
   { id: 'premium', valor: 1500, nome: 'Plano Premium', preco: 'R$1500/mês' },
 ];
 
-// Base URL do backend (porta 3003) via .env
-// Usa NEXT_PUBLIC_API_BASE_URL; aceita NEXT_PUBLIC_BACKEND_URL como legado; remove barras finais.
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3003').replace(/\/+$/,'');
 
 export default function Home() {
   // --- Estados ---
   const [userData, setUserData] = useState<User | null>(null);
-  const [userLoading, setUserLoading] = useState(false);
+  const [userLoading, setUserLoading] = useState(true);
   const [userError, setUserError] = useState("");
 
   const [loadingPlan, setLoadingPlan] = useState<{[key: string]: boolean}>({});
@@ -67,64 +60,61 @@ export default function Home() {
 
   // --- Lógica de Autenticação ---
   const isAuthenticated = useMemo(() => {
-  // Enquanto ainda está carregando, não considerar logado
-  if (userLoading) return false;
+    if (userLoading) return false;
+    return !!(userData?.id && userData?.email);
+  }, [userData, userLoading]);
 
-  // Se não tem usuário retornado pela API, não está logado
-  if (!userData || !userData.email) return false;
-
-  return true;
-}, [userData, userLoading]);
-
-  // Nome exibido no cumprimento: somente nome (sem fallback para email)
   const displayName = useMemo(() => {
-    const n = (userData?.name || userData?.full_name || "").trim()
-    return n
-  }, [userData])
+    return (userData?.name || userData?.full_name || "").trim();
+  }, [userData]);
 
-  // Helper: busca nome do perfil em public.user_profiles
+  // Helper: busca nome do perfil
   const loadProfileName = async (userId: string) => {
     try {
       const { data, error } = await supabase
         .from("user_profiles")
         .select("name")
         .eq("id", userId)
-        .single()
+        .single();
 
       if (!error && data?.name) {
-        setUserData((prev) => ({ ...(prev || { id: userId, email: "" }), name: String(data.name) }))
+        setUserData((prev) => ({
+          ...(prev || { id: userId, email: "" }),
+          name: String(data.name)
+        }));
       }
-    } catch {}
-  }
+    } catch (err) {
+      console.error("Erro ao carregar nome do perfil:", err);
+    }
+  };
 
   // --- Effects ---
-  
-  // Buscar dados do usuário autenticado
   useEffect(() => {
     const checkUser = async () => {
       setUserLoading(true);
       try {
-        const { data: { user }, error } = await supabase.auth.getUser();
+        const { data: { session }, error } = await supabase.auth.getSession();
         
-        if (error || !user) {
+        if (error || !session?.user) {
+          console.log("Nenhuma sessão ativa");
           setUserData(null);
           setUserError("");
         } else {
+          console.log("Sessão ativa encontrada:", session.user.email);
           setUserData({
-            id: user.id,
-            email: user.email || "",
-            name: user.user_metadata?.name,
-            full_name: user.user_metadata?.full_name,
-            company_name: user.user_metadata?.company_name,
-            razao_social: user.user_metadata?.razao_social,
-            address: user.user_metadata?.address,
+            id: session.user.id,
+            email: session.user.email || "",
+            name: session.user.user_metadata?.name,
+            full_name: session.user.user_metadata?.full_name,
+            company_name: session.user.user_metadata?.company_name,
+            razao_social: session.user.user_metadata?.razao_social,
+            address: session.user.user_metadata?.address,
           });
-          // Carregar nome salvo nas Configurações (user_profiles.name)
-          await loadProfileName(user.id)
+          await loadProfileName(session.user.id);
           setUserError("");
         }
       } catch (err) {
-        console.error("Erro ao buscar usuário:", err);
+        console.error("Erro ao verificar sessão:", err);
         setUserData(null);
         setUserError("");
       } finally {
@@ -134,9 +124,12 @@ export default function Home() {
     
     checkUser();
     
-    // Listener para mudanças no estado de autenticação
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user) {
+    // Listener para mudanças de autenticação
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("Auth state change:", event);
+      
+      if (event === 'SIGNED_IN' && session?.user) {
+        console.log("Usuário logado:", session.user.email);
         setUserData({
           id: session.user.id,
           email: session.user.email || "",
@@ -146,8 +139,9 @@ export default function Home() {
           razao_social: session.user.user_metadata?.razao_social,
           address: session.user.user_metadata?.address,
         });
-        await loadProfileName(session.user.id)
-      } else {
+        await loadProfileName(session.user.id);
+      } else if (event === 'SIGNED_OUT') {
+        console.log("Usuário deslogado");
         setUserData(null);
       }
     });
@@ -157,7 +151,7 @@ export default function Home() {
     };
   }, []);
 
-  // Carregar avaliações do localStorage
+  // Carregar avaliações
   useEffect(() => {
     const stored = localStorage.getItem("avaliacoes");
     if (stored) {
@@ -167,18 +161,25 @@ export default function Home() {
 
   // --- Handlers ---
   const handleCheckoutPlano = async (plano: Plano) => {
+    // Verifica autenticação primeiro
+    if (!isAuthenticated) {
+      alert("Faça login primeiro para assinar um plano");
+      window.location.href = "/login";
+      return;
+    }
+
     setLoadingPlan((prev) => ({ ...prev, [plano.id]: true }));
     setErrorPlan((prev) => ({ ...prev, [plano.id]: "" }));
+    
     try {
       const res = await fetch(`${API_BASE}/api/stripe/checkout-session`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: 'include', // envia cookie de sessão (Supabase)
+        credentials: 'include',
         body: JSON.stringify({
-          // Envia ambas as convenções para máxima compatibilidade
-          amount: plano.valor, // em centavos (como antes)
-          productName: plano.nome, // nome legível
-          planId: plano.id // id interno
+          amount: plano.valor,
+          productName: plano.nome,
+          planId: plano.id
         })
       });
 
@@ -194,21 +195,16 @@ export default function Home() {
       }
 
       const data = await res.json();
-      console.log("Resposta do backend:", data); // DEBUG
-      
-      // Tenta diferentes formatos de resposta
       const checkoutUrl = data?.url || data?.sessionUrl || data?.checkoutUrl || data?.data?.url;
       
       if (checkoutUrl) {
-        console.log("Redirecionando para:", checkoutUrl);
         window.location.href = checkoutUrl;
         return;
       }
       
-      console.error("URL não encontrada na resposta:", data);
       setErrorPlan((prev) => ({ 
         ...prev, 
-        [plano.id]: data?.error || data?.message || "Resposta inválida do servidor. Verifique o console." 
+        [plano.id]: data?.error || data?.message || "Resposta inválida do servidor" 
       }));
     } catch (err) {
       console.error("Erro na requisição:", err);
@@ -218,16 +214,25 @@ export default function Home() {
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.href = "/";
+    } catch (error) {
+      console.error("Erro ao fazer logout:", error);
+    }
+  };
+
   // --- Renderização ---
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
       
-      {/* === HEADER (CABEÇALHO) === */}
+      {/* === HEADER === */}
       {!isAuthenticated ? (
         <header className="sticky top-0 z-50 px-6 py-4 border-b bg-white/90 backdrop-blur-sm">
           <div className="container flex items-center justify-between">
-            
-            {/* Logo com link para a home */}
             <Link href="/">
               <Image
                 src="/logo-biogen.png" 
@@ -237,7 +242,6 @@ export default function Home() {
                 priority 
               />
             </Link>
-
             <nav className="flex items-center gap-4">
               <Link href="/login">
                 <Button variant="outline">Entrar</Button>
@@ -264,10 +268,7 @@ export default function Home() {
               Configurações
             </Link>
             <button
-              onClick={async () => {
-                await supabase.auth.signOut();
-                window.location.href = "/login";
-              }}
+              onClick={handleLogout}
               className="text-sm font-medium text-green-100 hover:text-white transition-colors"
             >
               Sair
@@ -276,38 +277,25 @@ export default function Home() {
         </header>
       )}
       
-      {/* === MAIN (CONTEÚDO) === */}
+      {/* === MAIN === */}
       <main className="flex-1">
         
-        {/* Exibir erro de usuário (apenas erros reais) */}
-        {userError && (
-          <section className="container my-6">
-            <div className="bg-red-100 border border-red-300 text-red-800 rounded p-4 text-center">
-              {userError}
-            </div>
-          </section>
-        )}
-
-        {/* Exibe mensagem de boas-vindas se logado */}
-        {!userLoading && isAuthenticated && (
+        {/* Mensagem de boas-vindas */}
+        {!userLoading && isAuthenticated && displayName && (
           <section className="container my-6">
             <div className="bg-green-50 border border-green-200 rounded p-4 mb-4">
               <div className="text-green-800 text-lg font-semibold mb-2">
-                Seja bem-vindo {displayName}!
+                Seja bem-vindo, {displayName}!
               </div>
-              
             </div>
           </section>
         )}
         
         {/* === HERO BANNER === */}
-        {/* TODO: Substitua a URL da imagem de fundo abaixo */}
         <section 
           id="home" 
           className="relative py-32 md:py-48 text-white bg-cover bg-center bg-[url('../public/bidigester-bg.jpg')]">
-          {/* Overlay escuro */}
           <div className="absolute inset-0 bg-black/60" />
-          
           <div className="relative z-10 container px-4 md:px-6">
             <div className="flex flex-col items-center justify-center space-y-4 text-center">
               <div className="space-y-2">
@@ -349,7 +337,11 @@ export default function Home() {
                     <li>Dashboard de indicadores</li>
                     <li>Suporte dedicado</li>
                   </ul>
-                  <Button size="lg" onClick={() => handleCheckoutPlano(plano)} disabled={!!loadingPlan[plano.id]}>
+                  <Button 
+                    size="lg" 
+                    onClick={() => handleCheckoutPlano(plano)} 
+                    disabled={!!loadingPlan[plano.id]}
+                  >
                     {loadingPlan[plano.id] ? "Redirecionando..." : `Assinar por ${plano.preco}`}
                   </Button>
                   {errorPlan[plano.id] && (
@@ -397,13 +389,11 @@ export default function Home() {
           </div>
         </section>
 
-        {/* === SEÇÃO DE FUNCIONALIDADES (com ícones Bootstrap) === */}
+        {/* === SEÇÃO DE FUNCIONALIDADES === */}
         <section id="funcionalidades" className="py-12 md:py-24 lg:py-32 bg-white">
           <div className="container px-4 md:px-6">
             <h2 className="text-3xl font-bold text-center mb-12">Nossos Diferenciais</h2>
             <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-3">
-              
-              {/* 1. Rastreamento de Resíduos */}
               <div className="flex flex-col items-center space-y-2 text-center">
                 <div className="p-4 bg-green-100 rounded-full">
                   <Recycle className="h-6 w-6 text-green-600" />
@@ -411,8 +401,6 @@ export default function Home() {
                 <h3 className="text-xl font-bold">Rastreamento de Resíduos</h3>
                 <p className="text-gray-500">Monitore a quantidade de resíduos processados pelo seu biodigestor em tempo real.</p>
               </div>
-
-              {/* 2. Geração de Energia */}
               <div className="flex flex-col items-center space-y-2 text-center">
                 <div className="p-4 bg-yellow-100 rounded-full">
                   <LightningCharge className="h-6 w-6 text-yellow-600" />
@@ -420,8 +408,6 @@ export default function Home() {
                 <h3 className="text-xl font-bold">Geração de Energia</h3>
                 <p className="text-gray-500">Acompanhe a energia produzida pelo seu sistema com análises detalhadas.</p>
               </div>
-
-              {/* 3. Benefícios Fiscais */}
               <div className="flex flex-col items-center space-y-2 text-center">
                 <div className="p-4 bg-blue-100 rounded-full">
                   <GraphUpArrow className="h-6 w-6 text-blue-600" />
@@ -429,28 +415,22 @@ export default function Home() {
                 <h3 className="text-xl font-bold">Benefícios Fiscais</h3>
                 <p className="text-gray-500">Calcule e visualize os benefícios fiscais da sua produção de energia sustentável.</p>
               </div>
-
             </div>
           </div>
         </section>
       </main>
 
-      {/* === FOOTER (RODAPÉ) === */}
+      {/* === FOOTER === */}
       <footer className="py-8 border-t bg-gray-100">
         <div className="container flex flex-col items-center justify-center gap-4 text-center md:flex-row md:gap-8">
           <p className="text-sm text-gray-500">© 2024 BioDash. Todos os direitos reservados.</p>
           <nav className="flex gap-4 text-sm">
-            <Link href="#" className="text-gray-500 hover:underline">
-              Termos
-            </Link>
-            <Link href="#" className="text-gray-500 hover:underline">
-              Privacidade
-            </Link>
-            <Link href="#" className="text-gray-500 hover:underline">
-              Contato
-            </Link>
+            <Link href="#" className="text-gray-500 hover:underline">Termos</Link>
+            <Link href="#" className="text-gray-500 hover:underline">Privacidade</Link>
+            <Link href="#" className="text-gray-500 hover:underline">Contato</Link>
           </nav>
         </div>
       </footer>
     </div>
-  )};
+  );
+}

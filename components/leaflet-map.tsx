@@ -30,18 +30,30 @@ type Marcador = {
 //   Helpers de Supabase
 // ========================
 async function getCurrentUserId() {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.user) {
-    console.error("Usuário não autenticado - sessão inexistente");
+  try {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    
+    if (error) {
+      console.warn("Erro ao obter sessão:", error);
+      return null;
+    }
+    
+    if (!session?.user) {
+      // Não exibe erro - usuário simplesmente não está logado
+      return null;
+    }
+    
+    return session.user.id;
+  } catch (error) {
+    console.warn("Erro ao verificar autenticação:", error);
     return null;
   }
-  return session.user.id;
 }
 
 async function insertAddress(address: string): Promise<string | null> {
   const user_id = await getCurrentUserId();
   if (!user_id) {
-    console.error("Usuário não autenticado");
+    console.warn("Usuário não autenticado - não é possível inserir endereço");
     return null;
   }
   
@@ -68,7 +80,7 @@ async function insertAddress(address: string): Promise<string | null> {
 async function deleteAddress(dbId: string): Promise<boolean> {
   const user_id = await getCurrentUserId();
   if (!user_id) {
-    console.error("Usuário não autenticado para deletar");
+    console.warn("Usuário não autenticado - não é possível deletar");
     return false;
   }
   
@@ -232,7 +244,7 @@ export default function LeafletMap({ onAddMarkerClick }: LeafletMapProps = {}) {
     const fetchMarkers = async () => {
       const user_id = await getCurrentUserId();
       if (!user_id) {
-        console.log("Usuário não autenticado, não buscando marcadores");
+        // Usuário não logado - não busca marcadores (comportamento esperado)
         return;
       }
 

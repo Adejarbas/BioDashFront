@@ -98,3 +98,20 @@ export async function apiRequest<T = any>(
 export async function checkAuth(): Promise<ApiResponse<{ user: any }>> {
   return apiRequest<{ user: any }>('/api/user');
 }
+
+// ----------------------------------------------------------------------
+// API Fetch - Utilitário para fazer requisições ao backend
+// ----------------------------------------------------------------------
+
+export async function apiFetch(path: string, init: RequestInit = {}) {
+  const res = await fetch(path, { // path relativo, ex: "/api/auth/login"
+    ...init,
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(init.headers || {}),
+    },
+  });
+  
+  return res;
+}
