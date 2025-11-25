@@ -20,9 +20,6 @@ export function DashboardShell({ children }: DashboardShellProps) {
           <a href="/dashboard" className="text-sm font-medium text-white hover:text-green-100 transition-colors">
             Dashboard
           </a>
-          <a href="/indicators" className="text-sm font-medium text-green-100 hover:text-white transition-colors">
-            Indicadores
-          </a>
           <a href="/settings" className="text-sm font-medium text-green-100 hover:text-white transition-colors">
             Configurações
           </a>

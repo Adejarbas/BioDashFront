@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 
 // --- Imports de Ícones ---
 import { Recycle, LightningCharge, GraphUpArrow } from 'react-bootstrap-icons';
+import { Leaf } from "lucide-react";
 
 
 // teste para verificar conexão com o banco \/
@@ -251,14 +252,12 @@ export default function Home() {
       ) : (
         <header className="sticky top-0 z-50 flex h-16 items-center gap-4 bio-header px-6">
           <Link href="/" className="flex items-center gap-2 font-semibold">
-            <span className="text-xl">🍃 BioDash</span>
+          <Leaf className="h-6 w-6" />
+          <span className="text-xl">BioDash</span>
           </Link>
           <nav className="ml-auto flex gap-6">
             <Link href="/dashboard" className="text-sm font-medium text-white hover:text-green-100 transition-colors">
               Dashboard
-            </Link>
-            <Link href="/indicators" className="text-sm font-medium text-green-100 hover:text-white transition-colors">
-              Indicadores
             </Link>
             <Link href="/settings" className="text-sm font-medium text-green-100 hover:text-white transition-colors">
               Configurações
