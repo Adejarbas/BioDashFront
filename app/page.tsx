@@ -293,7 +293,7 @@ export default function Home() {
           <section className="container my-6">
             <div className="bg-green-50 border border-green-200 rounded p-4 mb-4">
               <div className="text-green-800 text-lg font-semibold mb-2">
-                Seja bem-vindo, {displayName}!
+                Seja bem-vindo {displayName}!
               </div>
               
             </div>
