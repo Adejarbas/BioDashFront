@@ -5,10 +5,17 @@ import { ArrowDown, ArrowUp, Droplet, Leaf, Zap } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { supabase } from "@/lib/supabase/client"
 
+interface MetricData {
+  value: number
+  changePercent: string
+  increasing: boolean
+}
+
 interface DashboardData {
-  energyGenerated: number
-  wasteProcessed: number
-  taxSavings: number
+  energy: MetricData
+  waste: MetricData
+  tax: MetricData
+  efficiency: MetricData
 }
 
 type IndicatorRow = {
@@ -17,16 +24,15 @@ type IndicatorRow = {
   tax_savings: number | null
   measured_at?: string | null
   created_at?: string | null
-  // user_id?: string | null // <- se existir e quiser filtrar por usuário
-  // company_id?: string | null // <- se existir e quiser filtrar por empresa
 }
 
 export function DashboardStats() {
   const [mounted, setMounted] = useState(false)
-  const [dashboardData, setDashboardData] = useState<DashboardData>({
-    energyGenerated: 0,
-    wasteProcessed: 0,
-    taxSavings: 0,
+  const [data, setData] = useState<DashboardData>({
+    energy: { value: 0, changePercent: "0%", increasing: true },
+    waste: { value: 0, changePercent: "0%", increasing: true },
+    tax: { value: 0, changePercent: "0%", increasing: true },
+    efficiency: { value: 0, changePercent: "0%", increasing: true },
   })
 
   useEffect(() => {
@@ -37,81 +43,89 @@ export function DashboardStats() {
     return () => clearInterval(interval)
   }, [])
 
+  // Função auxiliar para calcular a porcentagem de mudança
+  const calculateChange = (current: number, previous: number) => {
+    if (previous === 0) return current > 0 ? 100 : 0
+    return ((current - previous) / previous) * 100
+  }
+
+  // Função auxiliar para formatar o objeto de dados
+  const formatMetric = (current: number, previous: number): MetricData => {
+    const change = calculateChange(current, previous)
+    return {
+      value: current,
+      changePercent: `${Math.abs(change).toFixed(1)}%`,
+      increasing: change >= 0,
+    }
+  }
+
   const loadDashboardData = async () => {
     try {
-      // if (typeof navigator !== "undefined" && !navigator.onLine) return
+      // IDEAL_RATIO: Quanto de energia (kWh) 1 kg de resíduo deve gerar idealmente
+      const IDEAL_RATIO = 0.8 
 
       let query = supabase
         .from("biodigester_indicators")
         .select("energy_generated, waste_processed, tax_savings, measured_at, created_at")
-
-      // 🔒 Se precisar escopo por usuário/empresa, habilite um destes:
-      // const { data: auth } = await supabase.auth.getUser()
-      // const uid = auth.user?.id
-      // if (uid) query = query.eq("user_id", uid)
-      // query = query.eq("company_id", "<id-da-empresa>")
-
-      // Ordena pelo campo temporal (usa measured_at se existir, senão created_at)
-      // como não dá pra ordenar por coalesce no PostgREST simples, tentamos measured_at e,
-      // caso dê erro por ausência da coluna, caímos em created_at.
-      let { data, error } = await query
         .order("measured_at", { ascending: false, nullsFirst: false })
-        .limit(1)
+        .limit(2) // <--- MUDANÇA IMPORTANTE: Buscamos 2 registros para comparar
+
+      let { data: rows, error } = await query
       
-      if (error) {
-        // fallback: tentar por created_at
+      // Fallback para created_at se der erro ou vier vazio
+      if (error || !rows || rows.length === 0) {
         const fallback = await supabase
           .from("biodigester_indicators")
           .select("energy_generated, waste_processed, tax_savings, measured_at, created_at")
           .order("created_at", { ascending: false, nullsFirst: false })
-          .limit(1)
-
-        data = fallback.data
+          .limit(2)
+        rows = fallback.data
         if (fallback.error) throw fallback.error
       }
 
-      const row: IndicatorRow | undefined = data?.[0]
-      setDashboardData({
-        energyGenerated: Number(row?.energy_generated ?? 0),
-        wasteProcessed: Number(row?.waste_processed ?? 0),
-        taxSavings: Number(row?.tax_savings ?? 0),
+      const current = rows?.[0]
+      const previous = rows?.[1] // Pode ser undefined se só tiver 1 registro no banco
+
+      // Valores Atuais
+      const curEnergy = Number(current?.energy_generated ?? 0)
+      const curWaste = Number(current?.waste_processed ?? 0)
+      const curTax = Number(current?.tax_savings ?? 0)
+      
+      // Cálculo de Eficiência Atual
+      let curEfficiency = 0
+      if (curWaste > 0) {
+        curEfficiency = Math.min(((curEnergy / curWaste) / IDEAL_RATIO) * 100, 100)
+      }
+
+      // Valores Anteriores (se não existir registro anterior, assume 0)
+      const prevEnergy = Number(previous?.energy_generated ?? 0)
+      const prevWaste = Number(previous?.waste_processed ?? 0)
+      const prevTax = Number(previous?.tax_savings ?? 0)
+
+      // Cálculo de Eficiência Anterior
+      let prevEfficiency = 0
+      if (prevWaste > 0) {
+        prevEfficiency = Math.min(((prevEnergy / prevWaste) / IDEAL_RATIO) * 100, 100)
+      }
+
+      // Atualiza o estado com cálculos de variação
+      setData({
+        energy: formatMetric(curEnergy, prevEnergy),
+        waste: formatMetric(curWaste, prevWaste),
+        tax: formatMetric(curTax, prevTax),
+        efficiency: formatMetric(curEfficiency, prevEfficiency),
       })
-    } catch {
-      // logger silencioso; os cards ficam com zero em caso de falha
+
+    } catch (err) {
+      console.error("Error loading dashboard data:", err)
     }
   }
 
   if (!mounted) return null
 
-  const statsData = {
-    wasteProcessed: {
-      value: dashboardData.wasteProcessed.toFixed(1),
-      unit: "kg",
-      change: "+12.5%",
-      increasing: true,
-    },
-    energyGenerated: {
-      value: dashboardData.energyGenerated.toFixed(1),
-      unit: "kWh",
-      change: "+8.2%",
-      increasing: true,
-    },
-    taxDeduction: {
-      value: `R$ ${dashboardData.taxSavings.toFixed(2)}`,
-      unit: "",
-      change: "+15.3%",
-      increasing: true,
-    },
-    efficiency: {
-      value: "94.2",
-      unit: "%",
-      change: "+1.2%",
-      increasing: true,
-    },
-  }
-
   return (
     <>
+      {/* CARD 1: Resíduos */}
       <Card className="bio-stat-card">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium text-green-800">Resíduos Processados</CardTitle>
@@ -121,27 +135,24 @@ export function DashboardStats() {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-green-700">
-            {statsData.wasteProcessed.value}
-            <span className="text-xs font-normal text-green-500 ml-1">
-              {statsData.wasteProcessed.unit}
-            </span>
+            {data.waste.value.toFixed(1)}
+            <span className="text-xs font-normal text-green-500 ml-1">kg</span>
           </div>
           <p className="text-xs text-muted-foreground flex items-center mt-1">
-            {statsData.wasteProcessed.increasing ? (
+            {data.waste.increasing ? (
               <ArrowUp className="h-3 w-3 text-green-500 mr-1" />
             ) : (
               <ArrowDown className="h-3 w-3 text-red-500 mr-1" />
             )}
-            <span
-              className={statsData.wasteProcessed.increasing ? "text-green-500" : "text-red-500"}
-            >
-              {statsData.wasteProcessed.change}
-            </span>{" "}
-            em relação ao mês anterior
+            <span className={data.waste.increasing ? "text-green-500" : "text-red-500"}>
+              {data.waste.changePercent}
+            </span>
+            <span className="ml-1">em relação ao registro anterior</span>
           </p>
         </CardContent>
       </Card>
 
+      {/* CARD 2: Energia */}
       <Card className="bio-stat-card">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium text-green-800">Energia Gerada</CardTitle>
@@ -151,32 +162,28 @@ export function DashboardStats() {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-green-700">
-            {statsData.energyGenerated.value}
-            <span className="text-xs font-normal text-green-500 ml-1">
-              {statsData.energyGenerated.unit}
-            </span>
+            {data.energy.value.toFixed(1)}
+            <span className="text-xs font-normal text-green-500 ml-1">kWh</span>
           </div>
           <p className="text-xs text-muted-foreground flex items-center mt-1">
-            {statsData.energyGenerated.increasing ? (
+            {data.energy.increasing ? (
               <ArrowUp className="h-3 w-3 text-green-500 mr-1" />
             ) : (
               <ArrowDown className="h-3 w-3 text-red-500 mr-1" />
             )}
-            <span
-              className={statsData.energyGenerated.increasing ? "text-green-500" : "text-red-500"}
-            >
-              {statsData.energyGenerated.change}
-            </span>{" "}
-            em relação ao mês anterior
+            <span className={data.energy.increasing ? "text-green-500" : "text-red-500"}>
+              {data.energy.changePercent}
+            </span>
+            <span className="ml-1">em relação ao registro anterior</span>
           </p>
         </CardContent>
       </Card>
 
+      {/* CARD 3: Impostos */}
       <Card className="bio-stat-card">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium text-green-800">Imposto Abatido</CardTitle>
           <div className="rounded-full bg-blue-100 p-2">
-            {/* Ícone custom */}
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="24"
@@ -198,27 +205,23 @@ export function DashboardStats() {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-green-700">
-            {statsData.taxDeduction.value}
-            <span className="text-xs font-normal text-green-500 ml-1">
-              {statsData.taxDeduction.unit}
-            </span>
+            R$ {data.tax.value.toFixed(2)}
           </div>
           <p className="text-xs text-muted-foreground flex items-center mt-1">
-            {statsData.taxDeduction.increasing ? (
+            {data.tax.increasing ? (
               <ArrowUp className="h-3 w-3 text-green-500 mr-1" />
             ) : (
               <ArrowDown className="h-3 w-3 text-red-500 mr-1" />
             )}
-            <span
-              className={statsData.taxDeduction.increasing ? "text-green-500" : "text-red-500"}
-            >
-              {statsData.taxDeduction.change}
-            </span>{" "}
-            em relação ao mês anterior
+            <span className={data.tax.increasing ? "text-green-500" : "text-red-500"}>
+              {data.tax.changePercent}
+            </span>
+            <span className="ml-1">em relação ao registro anterior</span>
           </p>
         </CardContent>
       </Card>
 
+      {/* CARD 4: Eficiência */}
       <Card className="bio-stat-card">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium text-green-800">Eficiência do Sistema</CardTitle>
@@ -228,23 +231,19 @@ export function DashboardStats() {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-green-700">
-            {statsData.efficiency.value}
-            <span className="text-xs font-normal text-green-500 ml-1">
-              {statsData.efficiency.unit}
-            </span>
+            {data.efficiency.value.toFixed(1)}
+            <span className="text-xs font-normal text-green-500 ml-1">%</span>
           </div>
           <p className="text-xs text-muted-foreground flex items-center mt-1">
-            {statsData.efficiency.increasing ? (
+            {data.efficiency.increasing ? (
               <ArrowUp className="h-3 w-3 text-green-500 mr-1" />
             ) : (
               <ArrowDown className="h-3 w-3 text-red-500 mr-1" />
             )}
-            <span
-              className={statsData.efficiency.increasing ? "text-green-500" : "text-red-500"}
-            >
-              {statsData.efficiency.change}
-            </span>{" "}
-            em relação ao mês anterior
+            <span className={data.efficiency.increasing ? "text-green-500" : "text-red-500"}>
+              {data.efficiency.changePercent}
+            </span>
+            <span className="ml-1">em relação ao registro anterior</span>
           </p>
         </CardContent>
       </Card>

@@ -41,7 +41,6 @@ html {
       </head>
       <body>
         {children}
-        <SupportModal />
       </body>
     </html>
   )

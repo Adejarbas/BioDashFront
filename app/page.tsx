@@ -66,16 +66,13 @@ export default function Home() {
 
   const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
 
-  // --- Lógica de Autenticação ---
+
+  // --- Lógica de Autenticação (apenas para saudação e navegação) ---
   const isAuthenticated = useMemo(() => {
-  // Enquanto ainda está carregando, não considerar logado
-  if (userLoading) return false;
-
-  // Se não tem usuário retornado pela API, não está logado
-  if (!userData || !userData.email) return false;
-
-  return true;
-}, [userData, userLoading]);
+    if (userLoading) return false;
+    if (!userData || !userData.email) return false;
+    return true;
+  }, [userData, userLoading]);
 
   // Nome exibido no cumprimento: somente nome (sem fallback para email)
   const displayName = useMemo(() => {
@@ -224,21 +221,31 @@ export default function Home() {
     <div className="flex flex-col min-h-screen bg-gray-50">
       
       {/* === HEADER (CABEÇALHO) === */}
-      {!isAuthenticated ? (
-        <header className="sticky top-0 z-50 px-6 py-4 border-b bg-white/90 backdrop-blur-sm">
-          <div className="container flex items-center justify-between">
-            
-            {/* Logo com link para a home */}
-            <Link href="/">
-              <Image
-                src="/logo-biogen.png" 
-                alt="Logo BioGen"
-                width={140}
-                height={40}
-                priority 
-              />
-            </Link>
-
+      <header className={isAuthenticated ? "sticky top-0 z-50 flex h-16 items-center gap-4 bio-header px-6" : "sticky top-0 z-50 px-6 py-4 border-b bg-white/90 backdrop-blur-sm"}>
+        <div className={isAuthenticated ? undefined : "container flex items-center justify-between"}>
+          <Link href="/" className={isAuthenticated ? "flex items-center gap-2 font-semibold" : undefined}>
+            {isAuthenticated ? <Leaf className="h-6 w-6" /> : null}
+            <span className="text-xl">BioDash</span>
+          </Link>
+          {isAuthenticated ? (
+            <nav className="ml-auto flex gap-6">
+              <Link href="/dashboard" className="text-sm font-medium text-white hover:text-green-100 transition-colors">
+                Dashboard
+              </Link>
+              <Link href="/settings" className="text-sm font-medium text-green-100 hover:text-white transition-colors">
+                Configurações
+              </Link>
+              <button
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                  window.location.href = "/login";
+                }}
+                className="text-sm font-medium text-green-100 hover:text-white transition-colors"
+              >
+                Sair
+              </button>
+            </nav>
+          ) : (
             <nav className="flex items-center gap-4">
               <Link href="/login">
                 <Button variant="outline">Entrar</Button>
@@ -247,33 +254,9 @@ export default function Home() {
                 <Button>Registrar</Button>
               </Link>
             </nav>
-          </div>
-        </header>
-      ) : (
-        <header className="sticky top-0 z-50 flex h-16 items-center gap-4 bio-header px-6">
-          <Link href="/" className="flex items-center gap-2 font-semibold">
-          <Leaf className="h-6 w-6" />
-          <span className="text-xl">BioDash</span>
-          </Link>
-          <nav className="ml-auto flex gap-6">
-            <Link href="/dashboard" className="text-sm font-medium text-white hover:text-green-100 transition-colors">
-              Dashboard
-            </Link>
-            <Link href="/settings" className="text-sm font-medium text-green-100 hover:text-white transition-colors">
-              Configurações
-            </Link>
-            <button
-              onClick={async () => {
-                await supabase.auth.signOut();
-                window.location.href = "/login";
-              }}
-              className="text-sm font-medium text-green-100 hover:text-white transition-colors"
-            >
-              Sair
-            </button>
-          </nav>
-        </header>
-      )}
+          )}
+        </div>
+      </header>
       
       {/* === MAIN (CONTEÚDO) === */}
       <main className="flex-1">
@@ -294,7 +277,6 @@ export default function Home() {
               <div className="text-green-800 text-lg font-semibold mb-2">
                 Seja bem-vindo {displayName}!
               </div>
-              
             </div>
           </section>
         )}
