@@ -3,8 +3,7 @@
 import React, { useState, useEffect, useRef } from "react"
 import { AlertCircle, Thermometer, Gauge, DropletsIcon } from "lucide-react"
 import SupportModal from "@/components/support-modal"
-// Importa a função do arquivo actions.ts (ajuste o caminho se necessário)
-import { sendAlertEmail } from "../lib/actions" 
+import { sendAlertEmail } from "../lib/actions"
 
 const BiodigestorMonitoring = () => {
   // --- Estados ---
@@ -14,9 +13,16 @@ const BiodigestorMonitoring = () => {
   const [showAlert, setShowAlert] = useState(false)
   const [timeElapsed, setTimeElapsed] = useState(0)
 
+  // --- Constantes ---
+  const TEMP_THRESHOLD = 40           // Temperatura crítica
+  const WINDOW_MS = 60 * 1000         // Janela de 1 minuto (60s)
+
   // --- Refs ---
   const emailSentRef = useRef(false)
   const modalRef = useRef(null)
+
+  const thresholdEventsRef = useRef([])      // timestamps das ultrapassagens
+  const prevTempRef = useRef(temperature)    // temperatura anterior
 
   const openSupport = () => {
     if (modalRef.current && modalRef.current.open) {
@@ -47,30 +53,53 @@ const BiodigestorMonitoring = () => {
       }
 
       // Variação de Pressão e pH
-      setPressure((prev) => Math.max(1.3, Math.min(1.7, prev + (Math.random() - 0.5) * 0.1)))
-      setPh((prev) => Math.max(6.8, Math.min(7.2, prev + (Math.random() - 0.5) * 0.1)))
-
+      setPressure((prev) =>
+        Math.max(1.3, Math.min(1.7, prev + (Math.random() - 0.5) * 0.1))
+      )
+      setPh((prev) =>
+        Math.max(6.8, Math.min(7.2, prev + (Math.random() - 0.5) * 0.1))
+      )
     }, 2000)
 
     return () => clearInterval(interval)
   }, [timeElapsed])
 
-
   // ========================================================================
-  // EFEITO 2: MONITORAMENTO (Envio de Email)
+  // EFEITO 2: MONITORAMENTO (envia e-mail sempre que passar do limite)
+  //           + contador de ultrapassagens em 1 minuto
   // ========================================================================
   useEffect(() => {
-    // Caso Crítico: Temperatura Alta
-    if (temperature > 40) {
-      setShowAlert(true)
+    const now = Date.now()
+    const prevTemp = prevTempRef.current
+
+    // Detecta cruzamento do limite: de <= limite para > limite
+    if (prevTemp <= TEMP_THRESHOLD && temperature > TEMP_THRESHOLD) {
+      // Atualiza lista de eventos e remove os mais antigos que 1 minuto
+      const updatedEvents = [
+        ...thresholdEventsRef.current,
+        now
+      ].filter((ts) => now - ts <= WINDOW_MS)
+
+      thresholdEventsRef.current = updatedEvents
+
+      console.log(
+        `🔥 Temperatura ultrapassou o limite. Ocorrências nos últimos 60s: ${updatedEvents.length}`
+      )
+
+      // Lógica antiga: sempre envia e-mail quando passa do limite,
+      // com trava para não mandar repetido enquanto permanecer crítico.
+      setShowAlert(true) // alerta visual aparece e NÃO some mais
 
       if (!emailSentRef.current) {
-        emailSentRef.current = true // Trava envios repetidos
-        
+        emailSentRef.current = true
+
         console.group("🔥 ALERTA DE TEMPERATURA DISPARADO")
         console.log(`🌡️ Temperatura: ${temperature.toFixed(1)}°C`)
-        
-        // Chama a Server Action importada
+        console.log(
+          "📈 Ocorrências acima do limite nos últimos 60s:",
+          updatedEvents.length
+        )
+
         sendAlertEmail(temperature)
           .then((result) => {
             if (result && result.success) {
@@ -82,16 +111,19 @@ const BiodigestorMonitoring = () => {
           .catch((err) => console.error("❌ ERRO DE REDE:", err))
           .finally(() => console.groupEnd())
       }
-    } 
-    // Caso Seguro: Reset
-    else if (temperature < 36) {
-      if (showAlert) setShowAlert(false)
-      if (emailSentRef.current) {
-        console.log("❄️ Temperatura normalizada. Sistema rearmado.")
-        emailSentRef.current = false 
-      }
     }
-  }, [temperature, showAlert])
+
+    // Rearma apenas o envio de e-mail quando a temperatura volta a ficar segura.
+    // NÃO escondemos o alerta visual (showAlert continua true).
+    if (temperature < 36 && emailSentRef.current) {
+      console.log("❄️ Temperatura normalizada. Sistema rearmado para novos envios.")
+      emailSentRef.current = false
+      // Importante: NÃO limpamos thresholdEventsRef aqui,
+      // para manter o contador de ocorrências da janela de 1 minuto.
+    }
+
+    prevTempRef.current = temperature
+  }, [temperature])
 
   // ========================================================================
   // UI / RENDERIZAÇÃO
@@ -105,10 +137,18 @@ const BiodigestorMonitoring = () => {
         <div className="bg-white p-4 rounded-lg shadow transition-all duration-300">
           <div className="flex justify-between">
             <div className="flex items-center gap-2">
-              <Thermometer className={`w-5 h-5 ${temperature > 40 ? "text-red-500" : "text-blue-500"}`} />
+              <Thermometer
+                className={`w-5 h-5 ${
+                  temperature > TEMP_THRESHOLD ? "text-red-500" : "text-blue-500"
+                }`}
+              />
               <span>Temperatura</span>
             </div>
-            <span className={temperature > 40 ? "text-red-500 font-bold" : "font-bold"}>
+            <span
+              className={
+                temperature > TEMP_THRESHOLD ? "text-red-500 font-bold" : "font-bold"
+              }
+            >
               {temperature.toFixed(1)}°C
             </span>
           </div>
@@ -149,7 +189,7 @@ const BiodigestorMonitoring = () => {
               </p>
               <button
                 onClick={openSupport}
-                className="w-full bg-red-500 text-white text-sm font-medium py-2 px-4 rounded-md hover:bg-red-600 transition-colors shadow-sm"
+                className="w-full bg-red-600 text-white text-sm font-medium py-2 px-4 rounded-md hover:bg-red-700 transition-colors shadow-md"
               >
                 Solicitar Manutenção
               </button>

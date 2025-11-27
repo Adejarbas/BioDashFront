@@ -221,42 +221,43 @@ export default function Home() {
     <div className="flex flex-col min-h-screen bg-gray-50">
       
       {/* === HEADER (CABEÇALHO) === */}
-      <header className={isAuthenticated ? "sticky top-0 z-50 flex h-16 items-center gap-4 bio-header px-6" : "sticky top-0 z-50 px-6 py-4 border-b bg-white/90 backdrop-blur-sm"}>
-        <div className={isAuthenticated ? undefined : "container flex items-center justify-between"}>
-          <Link href="/" className={isAuthenticated ? "flex items-center gap-2 font-semibold" : undefined}>
-            {isAuthenticated ? <Leaf className="h-6 w-6" /> : null}
-            <span className="text-xl">BioDash</span>
-          </Link>
-          {isAuthenticated ? (
-            <nav className="ml-auto flex gap-6">
-              <Link href="/dashboard" className="text-sm font-medium text-white hover:text-green-100 transition-colors">
-                Dashboard
-              </Link>
-              <Link href="/settings" className="text-sm font-medium text-green-100 hover:text-white transition-colors">
-                Configurações
-              </Link>
-              <button
-                onClick={async () => {
-                  await supabase.auth.signOut();
-                  window.location.href = "/login";
-                }}
-                className="text-sm font-medium text-green-100 hover:text-white transition-colors"
-              >
-                Sair
-              </button>
-            </nav>
-          ) : (
-            <nav className="flex items-center gap-4">
-              <Link href="/login">
-                <Button variant="outline">Entrar</Button>
-              </Link>
-              <Link href="/register">
-                <Button>Registrar</Button>
-              </Link>
-            </nav>
-          )}
-        </div>
-      </header>
+      <header className="sticky top-0 z-50 border-b bg-white/90 backdrop-blur-sm">
+  <div className="container flex h-16 items-center justify-between px-6 gap-4">
+
+    {/* LOGO */}
+    <Link href="/" className="flex items-center gap-2 font-semibold">
+      <Leaf className="h-6 w-6" />
+      <span className="text-xl">BioDash</span>
+    </Link>
+
+    {/* BOTÕES */}
+    <div className="flex items-center gap-4">
+
+      {/* Entrar / Dashboard */}
+      <Button
+        variant="outline"
+        onClick={() => {
+          if (isAuthenticated) {
+            window.location.href = "/dashboard";
+          } else {
+            window.location.href = "/login";
+          }
+        }}
+      >
+        Entrar
+      </Button>
+
+      {/* Registrar sempre disponível */}
+      <Link href="/register">
+        <Button>Registrar</Button>
+      </Link>
+    </div>
+
+  </div>
+</header>
+
+
+
       
       {/* === MAIN (CONTEÚDO) === */}
       <main className="flex-1">
