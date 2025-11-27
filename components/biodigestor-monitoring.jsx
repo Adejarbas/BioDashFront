@@ -148,11 +148,12 @@ const BiodigestorMonitoring = () => {
                 Notificação enviada automaticamente para o e-mail do responsável.
               </p>
               <button
-                onClick={openSupport}
-                className="w-full bg-red-500 text-white text-sm font-medium py-2 px-4 rounded-md hover:bg-red-600 transition-colors shadow-sm"
-              >
-                Solicitar Manutenção
-              </button>
+  onClick={openSupport}
+  className="w-full bg-red-600 text-white text-sm font-medium py-2 px-4 rounded-md 
+             hover:bg-red-700 transition-colors shadow-md"
+>
+  Solicitar Manutenção
+</button>
             </div>
           </div>
         )}
