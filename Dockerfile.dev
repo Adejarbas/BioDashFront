@@ -1,0 +1,23 @@
+# Dockerfile para desenvolvimento
+FROM node:18-alpine
+
+# Instala pnpm globalmente
+RUN npm install -g pnpm
+
+# Define o diretório de trabalho
+WORKDIR /app
+
+# Copia os arquivos de definição de pacotes
+COPY package.json pnpm-lock.yaml ./
+
+# Instala todas as dependências
+RUN pnpm install --force
+
+# Copia o resto do código-fonte
+COPY . .
+
+# Expõe a porta de desenvolvimento
+EXPOSE 3001
+
+# Comando para desenvolvimento com hot reload
+CMD ["pnpm", "dev"]

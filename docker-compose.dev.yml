@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  # Frontend em modo desenvolvimento
+  biodash-frontend-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://biodash-backend:3003
+      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - biodash-network
+    restart: unless-stopped
+    container_name: biodash-frontend-dev
+    depends_on:
+      - biodash-backend
+
+  # Backend (configuração de exemplo)
+  biodash-backend:
+    # Substitua por sua configuração real do backend
+    image: biodash-backend:latest
+    build:
+      context: ../BioDashBack  # Ajuste o caminho para seu repositório backend
+      dockerfile: Dockerfile
+    ports:
+      - "3003:3003"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=${DATABASE_URL}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - PORT=3003
+    volumes:
+      - ../BioDashBack:/app  # Ajuste o caminho
+      - /app/node_modules
+    networks:
+      - biodash-network
+    restart: unless-stopped
+    container_name: biodash-backend-dev
+
+  # Banco de dados PostgreSQL (opcional, se não usar Supabase)
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=biodash_db
+      - POSTGRES_USER=biodash_user
+      - POSTGRES_PASSWORD=biodash_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts:/docker-entrypoint-initdb.d
+    networks:
+      - biodash-network
+    container_name: biodash-postgres
+    profiles:
+      - with-db
+
+networks:
+  biodash-network:
+    driver: bridge
+    name: biodash-network
+
+volumes:
+  postgres_data:
