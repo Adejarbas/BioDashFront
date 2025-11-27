@@ -36,7 +36,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
       </header>
       <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">{children}</main>
       <footer className="py-4 px-8 text-center text-sm text-green-700 border-t border-green-100 bg-white">
-        <p>© 2024 BioDash - Sistema de Monitoramento de Biodigestores</p>
+        <p>© 2025 BioDash - Sistema de Monitoramento de Biodigestores</p>
       </footer>
     </div>
   )
