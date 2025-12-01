@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image"; // Importado para o logo
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/lib/supabase/client";
+import logger from "@/lib/logger-client";
 
 // --- Imports de Componentes UI ---
 import { Button } from "@/components/ui/button";
@@ -102,11 +103,14 @@ export default function Home() {
     const checkUser = async () => {
       setUserLoading(true);
       try {
+        logger.info('🏠 Página inicial acessada');
+        
         const { data: { user }, error } = await supabase.auth.getUser();
         
         if (error || !user) {
           setUserData(null);
           setUserError("");
+          logger.info('👤 Usuário não autenticado visitou a home');
         } else {
           setUserData({
             id: user.id,
@@ -116,6 +120,10 @@ export default function Home() {
             company_name: user.user_metadata?.company_name,
             razao_social: user.user_metadata?.razao_social,
             address: user.user_metadata?.address,
+          });
+          logger.info('✅ Usuário autenticado visualizou home', { 
+            userId: user.id, 
+            email: user.email 
           });
           // Carregar nome salvo nas Configurações (user_profiles.name)
           await loadProfileName(user.id)
@@ -167,6 +175,13 @@ export default function Home() {
   const handleCheckoutPlano = async (plano: Plano) => {
     setLoadingPlan((prev) => ({ ...prev, [plano.id]: true }));
     setErrorPlan((prev) => ({ ...prev, [plano.id]: "" }));
+    
+    logger.info('💳 Iniciando checkout Stripe', { 
+      plano: plano.nome, 
+      valor: plano.valor,
+      userId: userData?.id 
+    });
+    
     try {
       const res = await fetch(`${API_BASE}/api/stripe/checkout-session`, {
         method: "POST",
@@ -185,6 +200,10 @@ export default function Home() {
         try {
           const errJson = await res.json();
           console.error("Erro do backend:", errJson);
+          logger.error('❌ Erro ao criar checkout Stripe', { 
+            plano: plano.nome, 
+            erro: errJson 
+          });
           msg = errJson.error || errJson.message || msg;
         } catch {}
         setErrorPlan((prev) => ({ ...prev, [plano.id]: msg }));
@@ -199,17 +218,23 @@ export default function Home() {
       
       if (checkoutUrl) {
         console.log("Redirecionando para:", checkoutUrl);
+        logger.info('✅ Redirecionando para Stripe Checkout', { 
+          plano: plano.nome, 
+          url: checkoutUrl 
+        });
         window.location.href = checkoutUrl;
         return;
       }
       
       console.error("URL não encontrada na resposta:", data);
+      logger.error('❌ URL de checkout não encontrada', { resposta: data });
       setErrorPlan((prev) => ({ 
         ...prev, 
         [plano.id]: data?.error || data?.message || "Resposta inválida do servidor. Verifique o console." 
       }));
     } catch (err) {
       console.error("Erro na requisição:", err);
+      logger.error('❌ Erro na requisição de checkout', { erro: err });
       setErrorPlan((prev) => ({ ...prev, [plano.id]: "Erro de conexão com o servidor" }));
     } finally {
       setLoadingPlan((prev) => ({ ...prev, [plano.id]: false }));

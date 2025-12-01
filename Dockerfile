@@ -1,52 +1,51 @@
 # --- Estágio 1: "Builder" ---
 # Aqui é onde instalamos tudo e "buildamos" o projeto
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 
 # Argumentos de build para variáveis de ambiente
 ARG NEXT_PUBLIC_SUPABASE_URL
 ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
 ARG NEXT_PUBLIC_API_BASE_URL
+ARG LOGTAIL_TOKEN
+ARG LOGTAIL_URL
 
 # Define as variáveis de ambiente
 ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
 ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
-
-# Instala pnpm globalmente
-RUN npm install -g pnpm
+ENV LOGTAIL_TOKEN=$LOGTAIL_TOKEN
+ENV LOGTAIL_URL=$LOGTAIL_URL
 
 # Define o diretório de trabalho
 WORKDIR /app
 
 # Copia os arquivos de definição de pacotes
-COPY package.json pnpm-lock.yaml ./
+COPY package.json package-lock.json ./
 
 # Instala TODAS as dependências (incluindo devDependencies) 
-RUN pnpm install --force
+RUN npm install --legacy-peer-deps
 
 # Copia o resto do código-fonte
 COPY . .
 
 # Roda o script de build do Next.js
-RUN pnpm run build
+RUN npm run build
 
 # --- Estágio 2: "Produção" ---
 # Aqui criamos a imagem final, que é limpa e enxuta
-FROM node:18-alpine
-
-# Instala pnpm globalmente
-RUN npm install -g pnpm
+FROM node:20-alpine
 
 WORKDIR /app
 
 # Copia os arquivos de pacotes do estágio "builder"
-COPY --from=builder /app/package.json /app/pnpm-lock.yaml ./
+COPY --from=builder /app/package.json /app/package-lock.json ./
 
 # Instala APENAS as dependências de produção
-RUN pnpm install --force --prod
+RUN npm install --legacy-peer-deps --omit=dev
 
 # Copia os arquivos "buildados" do estágio "builder"
 COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/next.config.mjs ./next.config.mjs
 
 # Copia a pasta "public" (imagens, fontes, etc.)
 COPY --from=builder /app/public ./public
@@ -55,4 +54,4 @@ COPY --from=builder /app/public ./public
 EXPOSE 3001
 
 # O comando para iniciar o servidor Next.js em produção
-CMD ["pnpm", "start"]
+CMD ["npm", "start"]
