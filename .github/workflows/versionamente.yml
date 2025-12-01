@@ -322,13 +322,13 @@ jobs:
         if: failure()
         uses: dawidd6/action-send-mail@v3
         with:
-          server_address: smtp-mail.outlook.com
+          server_address: smtp.gmail.com
           server_port: 587
-          secure: false
+          secure: true
           username: ${{ secrets.EMAIL_USERNAME }}
           password: ${{ secrets.EMAIL_PASSWORD }}
           subject: "❌ Falha pipeline Actions - BioDashFront"
-          to: daniiel_adejarbas@hotmail.com
+          to: grupobiogen.equipe@gmail.com
           from: ${{ secrets.EMAIL_USERNAME }}
           body: |
             ⚠️ A execução do pipeline FALHOU!
@@ -350,13 +350,13 @@ jobs:
         if: success()
         uses: dawidd6/action-send-mail@v3
         with:
-          server_address: smtp-mail.outlook.com
+          server_address: smtp.gmail.com
           server_port: 587
-          secure: false
+          secure: true
           username: ${{ secrets.EMAIL_USERNAME }}
           password: ${{ secrets.EMAIL_PASSWORD }}
-          subject: "✅ Pipeline Actions executado com sucesso - BioDashFront"
-          to: daniiel_adejarbas@hotmail.com
+          subject: "✅ Pipeline BioDashFront executado com sucesso!"
+          to: grupobiogen.equipe@gmail.com
           from: ${{ secrets.EMAIL_USERNAME }}
           body: |
             🎉 Pipeline executado com SUCESSO!
