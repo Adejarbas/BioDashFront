@@ -10,8 +10,9 @@ WORKDIR /app
 # Copia os arquivos de definição de pacotes
 COPY package.json package-lock.json ./
 
-# Instala todas as dependências
-RUN npm install --legacy-peer-deps
+# Instala todas as dependências (incluindo winston para logging)
+RUN npm install --legacy-peer-deps && \
+    npm install winston @logtail/node @logtail/winston --legacy-peer-deps
 
 # Copia o resto do código-fonte
 COPY . .
