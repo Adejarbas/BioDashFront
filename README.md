@@ -2,9 +2,9 @@
 
 Este repositório contém o frontend (Next.js) da aplicação BioDash. Este README descreve como configurar o ambiente de desenvolvimento local apontando o backend local na porta 3003.
 
-Pré-requisitos
-- Node.js (recomendado >= 18)
-- pnpm (ou npm/yarn caso prefira)
+## Pré-requisitos
+- Node.js (recomendado >= 20)
+- npm (ou pnpm/yarn caso prefira)
 
 1) Instalar dependências
 
