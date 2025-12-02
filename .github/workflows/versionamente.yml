@@ -246,7 +246,7 @@ jobs:
 
       - name: Commit e push package/tag
 
-        if: steps.version.outputs.should_deploy == 'true' && github.ref == 'refs/heads/develop'
+        if: steps.version.outputs.should_deploy == 'true' && github.ref == 'refs/heads/main'
 
         env:
 
