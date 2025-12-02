@@ -241,8 +241,14 @@ jobs:
         run: |
 
           set -euo pipefail
-
-          npm version "${NEW_VERSION}" --no-git-tag-version
+          
+          CURRENT_PKG_VERSION=$(node -p "require('./package.json').version")
+          
+          if [ "$CURRENT_PKG_VERSION" != "${NEW_VERSION}" ]; then
+            npm version "${NEW_VERSION}" --no-git-tag-version
+          else
+            echo "Versão $NEW_VERSION já está no package.json"
+          fi
 
       - name: Commit e push package/tag
 
