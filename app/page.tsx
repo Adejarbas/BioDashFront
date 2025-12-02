@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image"; // Importado para o logo
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/lib/supabase/client";
+import logger from "@/lib/logger-client";
 
 // --- Imports de Componentes UI ---
 import { Button } from "@/components/ui/button";
@@ -102,11 +103,14 @@ export default function Home() {
     const checkUser = async () => {
       setUserLoading(true);
       try {
+        logger.info('🏠 Página inicial acessada');
+        
         const { data: { user }, error } = await supabase.auth.getUser();
         
         if (error || !user) {
           setUserData(null);
           setUserError("");
+          logger.info('👤 Usuário não autenticado visitou a home');
         } else {
           setUserData({
             id: user.id,
@@ -116,6 +120,10 @@ export default function Home() {
             company_name: user.user_metadata?.company_name,
             razao_social: user.user_metadata?.razao_social,
             address: user.user_metadata?.address,
+          });
+          logger.info('✅ Usuário autenticado visualizou home', { 
+            userId: user.id, 
+            email: user.email 
           });
           // Carregar nome salvo nas Configurações (user_profiles.name)
           await loadProfileName(user.id)
@@ -167,6 +175,13 @@ export default function Home() {
   const handleCheckoutPlano = async (plano: Plano) => {
     setLoadingPlan((prev) => ({ ...prev, [plano.id]: true }));
     setErrorPlan((prev) => ({ ...prev, [plano.id]: "" }));
+    
+    logger.info('💳 Iniciando checkout Stripe', { 
+      plano: plano.nome, 
+      valor: plano.valor,
+      userId: userData?.id 
+    });
+    
     try {
       const res = await fetch(`${API_BASE}/api/stripe/checkout-session`, {
         method: "POST",
@@ -185,6 +200,10 @@ export default function Home() {
         try {
           const errJson = await res.json();
           console.error("Erro do backend:", errJson);
+          logger.error('❌ Erro ao criar checkout Stripe', { 
+            plano: plano.nome, 
+            erro: errJson 
+          });
           msg = errJson.error || errJson.message || msg;
         } catch {}
         setErrorPlan((prev) => ({ ...prev, [plano.id]: msg }));
@@ -199,17 +218,23 @@ export default function Home() {
       
       if (checkoutUrl) {
         console.log("Redirecionando para:", checkoutUrl);
+        logger.info('✅ Redirecionando para Stripe Checkout', { 
+          plano: plano.nome, 
+          url: checkoutUrl 
+        });
         window.location.href = checkoutUrl;
         return;
       }
       
       console.error("URL não encontrada na resposta:", data);
+      logger.error('❌ URL de checkout não encontrada', { resposta: data });
       setErrorPlan((prev) => ({ 
         ...prev, 
         [plano.id]: data?.error || data?.message || "Resposta inválida do servidor. Verifique o console." 
       }));
     } catch (err) {
       console.error("Erro na requisição:", err);
+      logger.error('❌ Erro na requisição de checkout', { erro: err });
       setErrorPlan((prev) => ({ ...prev, [plano.id]: "Erro de conexão com o servidor" }));
     } finally {
       setLoadingPlan((prev) => ({ ...prev, [plano.id]: false }));
@@ -221,43 +246,42 @@ export default function Home() {
     <div className="flex flex-col min-h-screen bg-gray-50">
       
       {/* === HEADER (CABEÇALHO) === */}
-      <header className="sticky top-0 z-50 border-b bg-white/90 backdrop-blur-sm">
-  <div className="container flex h-16 items-center justify-between px-6 gap-4">
-
-    {/* LOGO */}
-    <Link href="/" className="flex items-center gap-2 font-semibold">
-      <Leaf className="h-6 w-6" />
-      <span className="text-xl">BioDash</span>
-    </Link>
-
-    {/* BOTÕES */}
-    <div className="flex items-center gap-4">
-
-      {/* Entrar / Dashboard */}
-      <Button
-        variant="outline"
-        onClick={() => {
-          if (isAuthenticated) {
-            window.location.href = "/dashboard";
-          } else {
-            window.location.href = "/login";
-          }
-        }}
-      >
-        Entrar
-      </Button>
-
-      {/* Registrar sempre disponível */}
-      <Link href="/register">
-        <Button>Registrar</Button>
-      </Link>
-    </div>
-
-  </div>
-</header>
-
-
-
+      <header className={isAuthenticated ? "sticky top-0 z-50 flex h-16 items-center gap-4 bio-header px-6" : "sticky top-0 z-50 px-6 py-4 border-b bg-white/90 backdrop-blur-sm"}>
+        <div className={isAuthenticated ? undefined : "container flex items-center justify-between"}>
+          <Link href="/" className={isAuthenticated ? "flex items-center gap-2 font-semibold" : undefined}>
+            {isAuthenticated ? <Leaf className="h-6 w-6" /> : null}
+            <span className="text-xl">BioDash</span>
+          </Link>
+          {isAuthenticated ? (
+            <nav className="ml-auto flex gap-6">
+              <Link href="/dashboard" className="text-sm font-medium text-white hover:text-green-100 transition-colors">
+                Dashboard
+              </Link>
+              <Link href="/settings" className="text-sm font-medium text-green-100 hover:text-white transition-colors">
+                Configurações
+              </Link>
+              <button
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                  window.location.href = "/login";
+                }}
+                className="text-sm font-medium text-green-100 hover:text-white transition-colors"
+              >
+                Sair
+              </button>
+            </nav>
+          ) : (
+            <nav className="flex items-center gap-4">
+              <Link href="/login">
+                <Button variant="outline">Entrar</Button>
+              </Link>
+              <Link href="/register">
+                <Button>Registrar</Button>
+              </Link>
+            </nav>
+          )}
+        </div>
+      </header>
       
       {/* === MAIN (CONTEÚDO) === */}
       <main className="flex-1">

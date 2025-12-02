@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
+    "@logtail/node": "^0.5.6",
+    "@logtail/winston": "^0.5.6",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",
     "@radix-ui/react-aspect-ratio": "1.1.1",
@@ -71,6 +73,7 @@
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^0.9.6",
+    "winston": "^3.18.3",
     "xlsx": "^0.18.5",
     "zod": "^3.24.1"
   },

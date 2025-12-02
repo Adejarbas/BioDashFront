@@ -290,45 +290,89 @@ jobs:
 
           fi
  
-      # Envio de e-mail EM CASO DE FALHA no pipeline
+      - name: Set up Docker Buildx
+        if: steps.version.outputs.should_deploy == 'true' && github.ref == 'refs/heads/main'
+        uses: docker/setup-buildx-action@v3
 
-      #- name: Enviar email se falhar
+      - name: Login to Docker Hub
+        if: steps.version.outputs.should_deploy == 'true' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-      #  if: failure()
+      - name: Build and push Docker image
+        if: steps.version.outputs.should_deploy == 'true' && github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/biodash-frontend:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/biodash-frontend:v${{ steps.version.outputs.new_version }}
+          build-args: |
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      #  uses: dawidd6/action-send-mail@v6
+      # Envio de e-mail quando pipeline FALHAR
+      - name: Enviar email se falhar
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          secure: false
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "❌ Falha pipeline Actions - BioDashFront"
+          to: grupobiogen.equipe@gmail.com
+          from: ${{ secrets.EMAIL_USERNAME }}
+          body: |
+            ⚠️ A execução do pipeline FALHOU!
+            
+            📦 Repositório: ${{ github.repository }}
+            🔖 Commit: ${{ github.sha }}
+            ⚙️ Workflow: ${{ github.workflow }}
+            🔧 Job: ${{ github.job }}
+            👤 Autor: ${{ github.actor }}
+            🌿 Branch: ${{ github.ref_name }}
+            
+            🔗 Ver logs completos: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            
+            --
+            Notificação automática do GitHub Actions
 
-      #  with:
-
-      #    server_address: smtp.gmail.com
-
-      #    server_port: 587
-
-      #    secure: false
-
-       #   username: ${{ secrets.EMAIL_USERNAME }}
-
-        #  password: ${{ secrets.EMAIL_PASSWORD }}
-
-      #    subject: Falha pipeline Actions
-
-      #    to: fe.dsm.vot.001@gmail.com
-
-       #   from: ${{ secrets.EMAIL_USERNAME }}
-
-        #  body: |
-
-         #   A execução falhou.
-
-          #  Repositório: ${{ github.repository }}
-
-           # Commit: ${{ github.sha }}
-
-            #Workflow: ${{ github.workflow }}
-
-          #  Job: ${{ github.job }}
-
-           # Veja os logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      # Envio de e-mail quando pipeline tiver SUCESSO
+      - name: Enviar email de sucesso
+        if: success()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          secure: false
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "✅ Pipeline BioDashFront executado com sucesso!"
+          to: grupobiogen.equipe@gmail.com
+          from: ${{ secrets.EMAIL_USERNAME }}
+          body: |
+            🎉 Pipeline executado com SUCESSO!
+            
+            📦 Repositório: ${{ github.repository }}
+            🔖 Commit: ${{ github.sha }}
+            ⚙️ Workflow: ${{ github.workflow }}
+            🔧 Job: ${{ github.job }}
+            👤 Autor: ${{ github.actor }}
+            🌿 Branch: ${{ github.ref_name }}
+            📌 Versão: v${{ steps.version.outputs.new_version }}
+            
+            🔗 Ver detalhes: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            
+            --
+            Notificação automática do GitHub Actions
 
 # Cadastrar os dados para envio de e-mail e recupera-los aqui 
 

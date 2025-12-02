@@ -1,0 +1,24 @@
+# Dockerfile para desenvolvimento
+FROM node:20-alpine
+
+# Instala pnpm globalmente
+RUN npm install -g pnpm
+
+# Define o diretório de trabalho
+WORKDIR /app
+
+# Copia os arquivos de definição de pacotes
+COPY package.json package-lock.json ./
+
+# Instala todas as dependências (incluindo winston para logging)
+RUN npm install --legacy-peer-deps && \
+    npm install winston @logtail/node @logtail/winston --legacy-peer-deps
+
+# Copia o resto do código-fonte
+COPY . .
+
+# Expõe a porta de desenvolvimento
+EXPOSE 3001
+
+# Comando para desenvolvimento com hot reload
+CMD ["npm", "run", "dev"]
