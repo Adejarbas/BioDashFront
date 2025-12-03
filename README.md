@@ -20,7 +20,7 @@ pnpm install
 Copie o arquivo de exemplo e preencha os valores reais:
 
 ```powershell
-copy .env.local.example .env.local
+copy .env.local.example .env.local 
 ```
 
 Edite `.env.local` e preencha:
